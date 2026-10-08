@@ -1,0 +1,2514 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nikhil S. Beersing - Horse Racing Tipster Challenge</title>
+    <!-- Favicon: horse + Mauritius flag badge -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='16' y='0' fill='%23EA2839'/%3E%3Crect width='64' height='16' y='16' fill='%231A206D'/%3E%3Crect width='64' height='16' y='32' fill='%23FFD500'/%3E%3Crect width='64' height='16' y='48' fill='%2300A551'/%3E%3Ctext x='32' y='46' font-size='38' text-anchor='middle'%3E%F0%9F%90%8E%3C/text%3E%3C/svg%3E">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Supabase JS Client CDN (shared database / shared accounts) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 650px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 280px;
+            max-height: 350px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 320px;
+            }
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased bg-slate-950 text-slate-100 selection:bg-amber-500 selection:text-slate-950">
+
+<!-- Chosen Palette: Dark Slate Ground (#0f172a / #020617) with Warm Gold/Amber (#f59e0b) accents, Emerald Green (#10b981) for wins/returns, and Crimson (#ef4444) for alerts. -->
+
+<!-- Application Structure Plan:
+     1. Header & Bankroll Tracker: Sticky top navigation displaying active session, current user points, global 5,000 pts balance bar, auto-save feedback badge, and status indicators.
+     2. Racecard & Quantity Workspace: Interactive card-by-card prediction builder featuring field overview, runner stats with jockey weight allowances (e.g., 57.5kg -4kg), visual Win Probability bars (odds hidden from tipster), direct "Quantity" input with quick-selection chips (100, 200, 300, 500, 1000 or custom), auto-save triggers on pick selection, and optional Doubles/Trebles builders.
+     3. Stables & Jockeys Analytics Tab: Detailed breakdown of all horses categorized by Stable (Trainer) and Jockey, showing calculated win probabilities, runner counts, average win % expectation, and interactive Chart.js distributions.
+     4. Leaderboard & Performance Analytics: Overall and Meeting-specific ranking tables with separate Single / Double / Treble stats breakdowns, pick inspection modal, and Chart.js performance charts.
+     5. Admin Workspace: Data Importer for single-space or tabbed raw Mauritius racecards, Race Accordion Editor, Race Deletion tool, Final Tote Odds & Dead-Heat result settler, and User Management tab categorized by role (Tipsters vs Admins).
+     6. System Rules & Database Spec: Guide explaining 5,000 pt bankroll rules, dead-heat calculations, and Supabase SQL schema.
+-->
+
+<!-- Visualization & Content Choices:
+     - Win Probability Bars: HTML/CSS progress bars displaying calculated implied win percentage for each runner instead of raw odds.
+     - Stable & Jockey Breakdown: Visual cards, detailed filterable data tables, and Chart.js comparison charts analyzing trainer stables and jockey books of rides without SVG.
+     - Tipster Performance Chart: Chart.js Bar & Donut charts rendering tipster point totals and win strike rates.
+     - Racecard Fields & Allowances: Tailwind Data Grid and customized HTML tables detailing runner history, equipment, ratings, weight & jockey allowances (-4kg, etc.).
+     - Importer Sandbox: Multi-pattern Regex Tokenizer handling single-space and tab-delimited raw Mauritius text snippets with allowance detection.
+-->
+
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+<!-- TOP HEADER NAVIGATION -->
+<header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-xl">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="relative p-2.5 rounded-xl shadow-lg text-white overflow-hidden ring-1 ring-black/20" style="background: linear-gradient(to bottom, #EA2839 0%, #EA2839 25%, #1A206D 25%, #1A206D 50%, #FFD500 50%, #FFD500 75%, #00A551 75%, #00A551 100%);" title="Mauritius Horse Racing Tipster">
+                <i class="fa-solid fa-horse-head text-xl drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-lg font-black tracking-tight text-white leading-tight">Horse Racing Tipster</h1>
+                    <span class="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Friends League</span>
+                </div>
+                <p class="text-xs text-slate-400 flex items-center gap-1">
+                    <i class="fa-solid fa-trophy text-[10px] text-amber-400"></i> Private Friends' League &bull; 5,000 Pts &bull; No Real Money
+                </p>
+            </div>
+        </div>
+
+        <!-- User Controls / Session Status -->
+        <div class="flex items-center space-x-3">
+            <a href="https://nikhilsbeersing.github.io/football-tipster-challenge/" target="_blank" rel="noopener" class="text-xs bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5" title="Switch to the Football Tipster Challenge">
+                <i class="fa-solid fa-futbol"></i> <span class="hidden sm:inline">Football Tipster</span>
+            </a>
+            <div id="userHeaderInfo" class="hidden flex items-center space-x-2">
+                <span id="headerDisplayName" class="text-sm font-semibold text-slate-200"></span>
+                <span id="headerRoleBadge" class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-700/50"></span>
+                <button onclick="logout()" class="text-xs bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/50 px-2.5 py-1.5 rounded-lg transition" title="Logout">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                </button>
+            </div>
+
+            <div id="guestHeaderInfo" class="flex items-center space-x-2">
+                <button onclick="openAuthModal('login')" class="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-3 py-1.5 rounded-lg transition shadow-md">
+                    Log In
+                </button>
+                <button onclick="openAuthModal('signup')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium px-3 py-1.5 rounded-lg transition border border-slate-700">
+                    Sign Up
+                </button>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- MAIN APP NAVIGATION BAR -->
+<nav class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-[61px] z-30">
+    <div class="max-w-7xl mx-auto px-4 flex space-x-2 overflow-x-auto custom-scrollbar">
+        <button onclick="switchTab('racecard')" id="tabBtn-racecard" class="tab-btn px-4 py-3 text-sm font-bold border-b-2 border-amber-500 text-amber-400 flex items-center gap-2 whitespace-nowrap">
+            <i class="fa-solid fa-flag-checkered"></i> Racecard & Predictions
+        </button>
+        <button onclick="switchTab('stables')" id="tabBtn-stables" class="tab-btn px-4 py-3 text-sm font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap">
+            <i class="fa-solid fa-warehouse"></i> Stables & Jockeys
+        </button>
+        <button onclick="switchTab('analysis')" id="tabBtn-analysis" class="tab-btn px-4 py-3 text-sm font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap">
+            <i class="fa-solid fa-bullseye"></i> Race Analysis
+        </button>
+        <button onclick="switchTab('oddsevo')" id="tabBtn-oddsevo" class="tab-btn px-4 py-3 text-sm font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap">
+            <i class="fa-solid fa-arrow-trend-up"></i> Odds Evolution
+        </button>
+        <button onclick="switchTab('leaderboard')" id="tabBtn-leaderboard" class="tab-btn px-4 py-3 text-sm font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap">
+            <i class="fa-solid fa-chart-line"></i> Leaderboard & Analytics
+        </button>
+        <button onclick="switchTab('guide')" id="tabBtn-guide" class="tab-btn px-4 py-3 text-sm font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap">
+            <i class="fa-solid fa-book-open"></i> App Rules & Guide
+        </button>
+        <button id="adminTabNav" onclick="switchTab('admin')" class="tab-btn hidden px-4 py-3 text-sm font-bold border-b-2 border-transparent text-rose-400 hover:text-rose-300 flex items-center gap-2 whitespace-nowrap">
+            <i class="fa-solid fa-user-shield"></i> Admin Workspace
+            <span id="pendingBadge" class="hidden bg-rose-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">0</span>
+        </button>
+    </div>
+</nav>
+
+<!-- MAIN CONTENT CONTAINER -->
+<main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full space-y-6">
+
+    <!-- GLOBAL BANKROLL TOOLBAR (VISIBLE TO LOGGED IN TIPSTERS) -->
+    <div id="tipsterBankBar" class="hidden bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-amber-500/40 rounded-2xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-xl font-black">
+                <i class="fa-solid fa-coins"></i>
+            </div>
+            <div>
+                <h3 class="text-xs text-slate-400 uppercase tracking-wider font-bold">Race Meeting Bankroll</h3>
+                <div class="flex items-baseline gap-2">
+                    <span id="bankRemainingDisplay" class="text-2xl font-black text-amber-400">5,000</span>
+                    <span class="text-xs text-slate-400">/ 5,000 pts available</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <!-- Auto save notification badge -->
+            <div id="autoSaveIndicator" class="hidden flex items-center gap-1.5 bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 px-3 py-1.5 rounded-xl text-xs font-bold transition-all">
+                <i class="fa-solid fa-cloud-arrow-up text-emerald-400"></i>
+                <span id="autoSaveText">Auto-Saved</span>
+            </div>
+
+            <div id="bankValidationStatus" class="flex items-center gap-2 bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 text-xs font-semibold">
+                <i class="fa-solid fa-circle-info text-amber-400"></i>
+                <span id="bankStatusText">Min 100 pts required per race</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW 1: RACECARD & QUANTITY WORKSPACE -->
+    <section id="view-racecard" class="tab-content space-y-6">
+        <!-- Section Introduction -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <h2 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-horse text-amber-400"></i> Racecard & Predictions Workspace
+            </h2>
+            <p class="text-xs text-slate-400 leading-relaxed">
+                Explore scheduled races for the active meeting. Select your horse pick and set your quantity (min 100 pts). Picks auto-save instantly. Jockey allowances (e.g. 57.5kg -4kg) are indicated clearly under weight columns. Combinations (Doubles and Trebles) are optional.
+            </p>
+        </div>
+
+        <!-- Meeting Header Controls -->
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <div class="flex items-center space-x-3 w-full sm:w-auto">
+                <label for="meetingSelect" class="text-sm font-bold text-slate-300 flex items-center gap-2 whitespace-nowrap">
+                    <i class="fa-solid fa-calendar-days text-amber-400"></i> Meeting:
+                </label>
+                <select id="meetingSelect" onchange="onMeetingChange()" class="w-full sm:w-72 bg-slate-950 border border-slate-700 text-white text-sm rounded-lg p-2.5 focus:ring-amber-500 focus:border-amber-500 font-semibold">
+                    <!-- Options populated dynamically -->
+                </select>
+            </div>
+            
+            <div id="meetingDeadlineDisplay" class="text-xs text-slate-400 bg-slate-950 px-3.5 py-2 rounded-lg border border-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-clock text-amber-400"></i>
+                <span>Deadline: <strong id="deadlineTimeText" class="text-slate-200">1 min before Race 1</strong></span>
+                <span id="lockStatusBadge" class="ml-2 uppercase text-[10px] px-2 py-0.5 rounded font-black bg-emerald-950 text-emerald-400 border border-emerald-800">OPEN</span>
+            </div>
+        </div>
+
+        <!-- DYNAMIC RACES CONTAINER -->
+        <div id="racesList" class="space-y-6">
+            <!-- Dynamically Rendered Race Cards -->
+        </div>
+
+        <!-- EXOTIC COMBINATIONS SECTION (OPTIONAL DOUBLES & TREBLES) -->
+        <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 space-y-4 shadow-xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-base font-extrabold text-amber-400 flex items-center gap-2">
+                    <i class="fa-solid fa-layer-group"></i> Optional Combinations (Doubles & Trebles)
+                </h3>
+                <span class="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded font-bold">OPTIONAL • Min 100 pts per combo</span>
+            </div>
+            <p class="text-xs text-slate-400">
+                You can use any unallocated bankroll points to construct multi-leg accumulators. Choices save automatically on selection.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Double Card -->
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-sm text-slate-200"><i class="fa-solid fa-dice-two text-amber-400 mr-1"></i> Double</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                            <label class="text-slate-400 block mb-1">Leg 1 (Race A)</label>
+                            <select id="doubleLeg1" onchange="autoSavePicks()" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-xs">
+                                <option value="">Select Horse...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 block mb-1">Leg 2 (Race B)</label>
+                            <select id="doubleLeg2" onchange="autoSavePicks()" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-xs">
+                                <option value="">Select Horse...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 font-semibold block mb-1">Quantity:</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="doubleStake" min="0" step="50" placeholder="Optional Quantity (Min 100)" oninput="autoSavePicks()" class="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white font-mono">
+                            <span class="text-xs text-slate-400 font-bold">pts</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Treble Card -->
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-sm text-slate-200"><i class="fa-solid fa-dice-three text-amber-400 mr-1"></i> Treble</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-xs">
+                        <div>
+                            <label class="text-slate-400 block mb-1">Leg 1</label>
+                            <select id="trebleLeg1" onchange="autoSavePicks()" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white text-[11px]">
+                                <option value="">Horse...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 block mb-1">Leg 2</label>
+                            <select id="trebleLeg2" onchange="autoSavePicks()" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white text-[11px]">
+                                <option value="">Horse...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 block mb-1">Leg 3</label>
+                            <select id="trebleLeg3" onchange="autoSavePicks()" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white text-[11px]">
+                                <option value="">Horse...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 font-semibold block mb-1">Quantity:</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="trebleStake" min="0" step="50" placeholder="Optional Quantity (Min 100)" oninput="autoSavePicks()" class="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white font-mono">
+                            <span class="text-xs text-slate-400 font-bold">pts</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STICKY SUMMARY BAR -->
+        <div class="sticky bottom-6 z-30 bg-slate-900/95 backdrop-blur border border-amber-500/40 p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4">
+            <div>
+                <div class="text-xs text-slate-400 font-semibold">Total Allocated Points</div>
+                <div id="totalAllocatedText" class="text-xl font-black text-amber-400">0 / 5,000 pts</div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-emerald-400 font-bold flex items-center gap-1.5 bg-emerald-950/60 border border-emerald-800/60 px-3 py-2 rounded-xl">
+                    <i class="fa-solid fa-bolt"></i> Auto-Save Active
+                </span>
+            </div>
+        </div>
+    </section>
+
+    <!-- VIEW 2: STABLES & JOCKEYS ANALYTICS TAB -->
+    <section id="view-stables" class="tab-content hidden space-y-6">
+        <!-- Section Introduction -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <h2 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-warehouse text-amber-400"></i> Stables (Trainers) & Jockeys Insights
+            </h2>
+            <p class="text-xs text-slate-400 leading-relaxed">
+                Explore runner distribution and aggregated win probability percentages by Stable/Trainer and by Jockey across the current meeting. Analyze jockey weight allowances and runner potential before making your picks.
+            </p>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <div class="flex items-center space-x-3">
+                <button onclick="toggleStablesSubView('stables')" id="btnSubStables" class="px-4 py-2 rounded-lg text-xs font-bold bg-amber-500 text-slate-950 shadow">
+                    <i class="fa-solid fa-house-flag mr-1"></i> By Stable (Trainer)
+                </button>
+                <button onclick="toggleStablesSubView('jockeys')" id="btnSubJockeys" class="px-4 py-2 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700">
+                    <i class="fa-solid fa-user-ninja mr-1"></i> By Jockey & Allowance
+                </button>
+            </div>
+            <div class="text-xs text-slate-400">
+                Sorted by highest cumulative win probability
+            </div>
+        </div>
+
+        <!-- VISUAL ANALYTICS CHART FOR STABLES / JOCKEYS -->
+        <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-3">
+            <h3 id="stablesChartTitle" class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-chart-column text-amber-400"></i> Top Stables Win Probability Comparison
+            </h3>
+            <div class="chart-container">
+                <canvas id="stablesBarChart"></canvas>
+            </div>
+        </div>
+
+        <!-- DYNAMIC TABLES & CARDS FOR STABLES / JOCKEYS -->
+        <div id="stablesContainer" class="space-y-6">
+            <!-- Injected via JS -->
+        </div>
+    </section>
+
+    <!-- VIEW: RACE ANALYSIS (best chance & main danger per race) -->
+    <section id="view-analysis" class="tab-content hidden space-y-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <h2 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-bullseye text-amber-400"></i> Race Analysis: Best Chance &amp; Main Danger
+            </h2>
+            <p class="text-xs text-slate-400 leading-relaxed">
+                For every race of the selected meeting, see which horse has the best chance and which runner is its main danger. Chances are the win probabilities calculated from the market, the same ones shown on the Racecard. Change the meeting from the <strong>Racecard</strong> tab selector.
+            </p>
+            <p class="text-xs text-amber-400 mt-2 font-bold">Meeting: <span id="analysisMeetingName">-</span></p>
+        </div>
+        <div id="analysisSummary"></div>
+        <div id="analysisContainer" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
+    </section>
+
+    <!-- VIEW: ODDS EVOLUTION (external page, logo removed) -->
+    <section id="view-oddsevo" class="tab-content hidden space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <h2 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-arrow-trend-up text-amber-400"></i> Odds Evolution
+            </h2>
+            <p class="text-xs text-slate-400 leading-relaxed">Weekly odds evolution from Thursday to race day.</p>
+        </div>
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <label for="oddsEvoFile" class="text-sm font-bold text-slate-300 whitespace-nowrap">Page:</label>
+                <select id="oddsEvoFile" onchange="loadOddsEvolution()" class="w-full sm:w-72 bg-slate-950 border border-slate-700 text-white text-sm rounded-lg p-2.5 font-semibold"></select>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="loadOddsEvolution()" class="px-3 py-2 rounded-lg text-xs font-bold bg-slate-800 text-slate-200 hover:bg-slate-700"><i class="fa-solid fa-rotate mr-1"></i> Reload</button>
+                <a id="oddsEvoOpen" href="#" target="_blank" rel="noopener" class="px-3 py-2 rounded-lg text-xs font-bold bg-amber-500 text-slate-950"><i class="fa-solid fa-up-right-from-square mr-1"></i> Open full page</a>
+            </div>
+        </div>
+        <div id="oddsEvoStatus" class="text-xs text-slate-400"></div>
+        <div class="bg-white rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
+            <iframe id="oddsEvoFrame" title="Odds Evolution" class="w-full" style="height: 85vh; border: 0;" sandbox="allow-scripts allow-popups"></iframe>
+        </div>
+    </section>
+
+    <!-- VIEW 3: LEADERBOARD & PERFORMANCE ANALYTICS -->
+    <section id="view-leaderboard" class="tab-content hidden space-y-6">
+        <!-- Section Introduction -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <h2 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-chart-line text-amber-400"></i> Tipster Standings & Granular Statistics
+            </h2>
+            <p class="text-xs text-slate-400 leading-relaxed">
+                Track tipster rankings with separate breakdowns for <strong>Singles Pts</strong>, <strong>Doubles Pts</strong>, and <strong>Trebles Pts</strong>. Total points reflect official Tote final returns. Admin accounts are excluded from the public leaderboard.
+            </p>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <div class="flex items-center space-x-3">
+                <label class="text-sm font-bold text-slate-300">View Scope:</label>
+                <select id="leaderboardScopeSelect" onchange="renderLeaderboard()" class="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg p-2.5 font-semibold">
+                    <option value="overall">Overall Season Leaderboard</option>
+                </select>
+            </div>
+            <span class="text-xs text-slate-400 flex items-center gap-1.5">
+                <i class="fa-solid fa-user-check text-emerald-400"></i> Click "Inspect" to view picks after Race 1 deadline
+            </span>
+        </div>
+
+        <!-- VISUAL ANALYTICS CHARTS -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-3">
+                <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-bar text-amber-400"></i> Top Tipster Points Comparison
+                </h3>
+                <div class="chart-container">
+                    <canvas id="leaderboardBarChart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-3">
+                <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-pie text-emerald-400"></i> Strike Rate % Distribution
+                </h3>
+                <div class="chart-container">
+                    <canvas id="strikeRatePieChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- LEADERBOARD TABLE -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-950 text-xs uppercase tracking-wider text-slate-400 border-b border-slate-800 font-bold">
+                            <th class="p-4">Rank</th>
+                            <th class="p-4">Tipster</th>
+                            <th class="p-4 text-center">Singles Pts</th>
+                            <th class="p-4 text-center">Doubles Pts</th>
+                            <th class="p-4 text-center">Trebles Pts</th>
+                            <th class="p-4 text-center">Strike %</th>
+                            <th class="p-4 text-right">Total Points</th>
+                            <th class="p-4 text-center">Picks</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboardBody" class="divide-y divide-slate-800 text-sm font-medium">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- VIEW 4: APP RULES & GUIDE -->
+    <section id="view-guide" class="tab-content hidden space-y-6">
+        <!-- Section Introduction -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <h2 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-book-open text-amber-400"></i> Tipster Challenge &mdash; House Rules
+            </h2>
+            <p class="text-xs text-slate-400 leading-relaxed">
+                Rules governing points allocation, Tote odds, dead-heat calculations, jockey allowances, and deadline lock procedures.
+            </p>
+        </div>
+
+        <div class="bg-amber-950/20 border border-amber-500/30 rounded-2xl p-5 max-w-4xl mx-auto text-xs text-amber-200/90 leading-relaxed space-y-1.5">
+            <p class="font-bold text-amber-400 flex items-center gap-2"><i class="fa-solid fa-circle-info"></i> Please read: what this is (and isn't)</p>
+            <p>This is a free, private prediction game for a closed group of friends. The 5,000 "points" are notional only &mdash; they have no cash value, cannot be bought or cashed out, and are not redeemable for money or anything of value. No entry fee is charged and no real wagers are placed. This site is not operated, endorsed, or licensed by any turf club, racing authority, or gambling regulator, and it is not a gaming service. See the full <button onclick="switchTab('guide'); document.getElementById('termsSection').scrollIntoView({behavior:'smooth'});" class="underline font-bold text-amber-400">Terms &amp; Conditions</button> below for details.</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 max-w-4xl mx-auto shadow-xl">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-slate-300">
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <h3 class="font-bold text-amber-400 flex items-center gap-2"><i class="fa-solid fa-sack-dollar"></i> 5,000 Points Bankroll & Auto-Save</h3>
+                    <p class="text-xs leading-relaxed text-slate-400">
+                        For every race meeting, tipsters get exactly <strong>5,000 virtual points</strong> to allocate. Mandatory min quantity is <strong>100 points per race</strong>. Every selection auto-saves instantly.
+                    </p>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <h3 class="font-bold text-amber-400 flex items-center gap-2"><i class="fa-solid fa-weight-hanging"></i> Weights & Jockey Allowances</h3>
+                    <p class="text-xs leading-relaxed text-slate-400">
+                        Carried weights and jockey claims (e.g. <strong>57.5kg -4kg allowance</strong>) are displayed explicitly in racecards and jockey analytics.
+                    </p>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <h3 class="font-bold text-amber-400 flex items-center gap-2"><i class="fa-solid fa-calculator"></i> Tote Odds & Dead Heats</h3>
+                    <p class="text-xs leading-relaxed text-slate-400">
+                        Points returned = <code class="text-emerald-400 font-mono">Quantity × Final Tote Odds</code>. In a Dead Heat, returns are split equally between winning selections.
+                    </p>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <h3 class="font-bold text-amber-400 flex items-center gap-2"><i class="fa-solid fa-layer-group"></i> Optional Doubles & Trebles</h3>
+                    <p class="text-xs leading-relaxed text-slate-400">
+                        Doubles and Trebles are <strong>100% optional</strong> (min 100 pts if played). Standings track separate statistics for Singles, Doubles, and Trebles.
+                    </p>
+                </div>
+            </div>
+
+            <div class="bg-amber-950/30 border border-amber-500/40 rounded-xl p-4 text-xs text-amber-200/90 space-y-1">
+                <p class="font-bold text-amber-400 flex items-center gap-2"><i class="fa-solid fa-lock"></i> 1-Minute Before Race 1 Lock:</p>
+                <p>Selections lock automatically <strong>1 minute before Race 1 kickoff</strong>. Once locked, no predictions can be edited, and picks become visible to all tipsters.</p>
+            </div>
+        </div>
+
+        <!-- TERMS & CONDITIONS -->
+        <div id="termsSection" class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 max-w-4xl mx-auto shadow-xl">
+            <h3 class="text-base font-extrabold text-white flex items-center gap-2">
+                <i class="fa-solid fa-file-contract text-amber-400"></i> Terms &amp; Conditions
+            </h3>
+            <p class="text-xs text-slate-400 leading-relaxed">By creating an account or using this site, you agree to the following.</p>
+
+            <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
+                <div>
+                    <p class="font-bold text-amber-400">1. What this is</p>
+                    <p class="text-slate-400">This is a free, private prediction game built for a closed circle of friends to compare horse racing picks against each other for fun. It is a social leaderboard, not a gambling product.</p>
+                </div>
+                <div>
+                    <p class="font-bold text-amber-400">2. No real money</p>
+                    <p class="text-slate-400">The 5,000-point balance issued per meeting is entirely notional. Points cannot be purchased, deposited, withdrawn, cashed out, transferred, or exchanged for money, goods, or any prize of value. No entry fee is ever charged.</p>
+                </div>
+                <div>
+                    <p class="font-bold text-amber-400">3. Scoring logic</p>
+                    <p class="text-slate-400">Correct single picks score <code class="text-emerald-400 font-mono">Quantity &times; Final Tote Odds</code>. Optional Doubles/Trebles multiply the odds of each correct leg. Dead-heat winners split returns equally. Incorrect or unsettled picks score zero.</p>
+                </div>
+                <div>
+                    <p class="font-bold text-amber-400">4. Accounts &amp; access</p>
+                    <p class="text-slate-400">Accounts are approved manually by an admin and intended only for people invited to this friend group. Don't share your PIN. Admins can view, edit, or remove accounts and picks for moderation purposes.</p>
+                </div>
+                <div>
+                    <p class="font-bold text-amber-400">5. Data</p>
+                    <p class="text-slate-400">Your username, display name, and picks are stored to run the leaderboard, either on this device or in a shared database used by this friend group. Nothing is sold or shared outside the group, and there is no advertising or tracking on this site.</p>
+                </div>
+                <div>
+                    <p class="font-bold text-amber-400">6. Race data</p>
+                    <p class="text-slate-400">Race, runner, and odds information referenced in this app is used solely for private, non-commercial reference within this friend group and is not redistributed or sold. This site is not affiliated with, endorsed by, or operated by any turf club, racing authority, or gambling regulator.</p>
+                </div>
+                <div>
+                    <p class="font-bold text-amber-400">7. No guarantees</p>
+                    <p class="text-slate-400">This is a hobby project provided as-is, for fun, with no uptime or accuracy guarantees. Odds, results, and points are entered manually by admins and may occasionally contain errors.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- VIEW 5: ADMIN WORKSPACE -->
+    <section id="view-admin" class="tab-content hidden space-y-6">
+        <!-- Section Introduction -->
+        <div class="bg-rose-950/20 border border-rose-800/40 p-5 rounded-2xl flex items-center justify-between shadow-lg">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-user-shield text-rose-400 text-2xl"></i>
+                <div>
+                    <h2 class="font-bold text-white text-base">Administrator Control Panel</h2>
+                    <p class="text-xs text-rose-300/80">Manage meetings, modify/delete races, import single-space raw runner data, declare dead-heats, and manage Tipster vs Admin accounts.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Sub-navigation Tabs -->
+        <div class="flex border-b border-slate-800 space-x-4">
+            <button onclick="switchAdminTab('importer')" id="adminSubTab-importer" class="subtab-btn active border-b-2 border-rose-500 pb-2 text-sm font-bold text-rose-400">
+                <i class="fa-solid fa-file-import"></i> Importer & Results Settler
+            </button>
+            <button onclick="switchAdminTab('editor')" id="adminSubTab-editor" class="subtab-btn border-b-2 border-transparent pb-2 text-sm font-semibold text-slate-400 hover:text-slate-200">
+                <i class="fa-solid fa-pen-to-square"></i> Race Accordion Editor
+            </button>
+            <button onclick="switchAdminTab('users')" id="adminSubTab-users" class="subtab-btn border-b-2 border-transparent pb-2 text-sm font-semibold text-slate-400 hover:text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-users"></i> User Accounts (Tipsters & Admins)
+                <span id="pendingBadgeSub" class="bg-rose-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">0</span>
+            </button>
+            <button onclick="switchAdminTab('database')" id="adminSubTab-database" class="subtab-btn border-b-2 border-transparent pb-2 text-sm font-semibold text-slate-400 hover:text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-database"></i> Database &amp; Shared Accounts
+            </button>
+        </div>
+
+        <!-- SUBVIEW 1: DATA IMPORTER & RESULTS SETTLER -->
+        <div id="adminSub-importer" class="space-y-6">
+            <!-- Data Importer Card -->
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+                <h3 class="font-bold text-base text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-cloud-arrow-up text-amber-400"></i> Import Raw Racecard Text
+                </h3>
+
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1 font-semibold">Meeting Name</label>
+                        <input type="text" id="adminMeetingName" placeholder="e.g. Meeting 1" class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1 font-semibold">Race Number</label>
+                        <input type="number" id="adminRaceNum" min="1" max="9" placeholder="e.g. 1" class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1 font-semibold">Distance & Class</label>
+                        <input type="text" id="adminRaceMeta" placeholder="e.g. 1400m | Benchmark 60" class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1 font-semibold">Race Date</label>
+                        <input type="date" id="adminRaceDate" class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1 font-semibold">Post Time (PM &mdash; e.g. 12:30)</label>
+                        <input type="text" id="adminRaceTime" placeholder="e.g. 12:30" class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white">
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs text-slate-400 font-semibold">Paste Raw Data (Single-space, Multi-space, or Tab Delimited)</label>
+                    </div>
+                    <textarea id="adminRawCardData" rows="6" placeholder="Paste snippet here..." class="w-full bg-slate-950 border border-slate-700 rounded p-3 text-xs font-mono text-slate-200 focus:ring-amber-500 custom-scrollbar"></textarea>
+                    <details class="mt-2 text-xs text-slate-400">
+                        <summary class="cursor-pointer text-amber-400 hover:underline font-semibold">Show example format (reference only &mdash; not loaded into the box)</summary>
+                        <pre class="mt-2 bg-slate-950 border border-slate-800 rounded p-3 font-mono text-slate-300 overflow-x-auto custom-scrollbar">1 FLAG CHAMP 4 V RUHEE XNA 61.5 S RAMA 3 26 NEW - 200
+2 SAN ANDREAS 9 C HEWITSON TA 61 T JUGLALL 4 25 440 - 700
+3 KAISARISSA 5 R GUJADHUR NA 60 M SONARAM 2 23 486 - 1000</pre>
+                        <p class="mt-1">Columns: No &middot; Horse &middot; Age &middot; Trainer &middot; Equip &middot; Weight (e.g. 57.5(-4) for a 4kg allowance) &middot; Jockey &middot; Draw &middot; Rating &middot; Last Run (KG) &middot; Treatments &middot; Opening Odds.</p>
+                    </details>
+                </div>
+
+                <button onclick="processAndSaveRaceData()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-5 py-2.5 rounded-xl transition text-xs flex items-center gap-2">
+                    <i class="fa-solid fa-plus-circle"></i> Save Race & Add to Meeting
+                </button>
+            </div>
+
+            <!-- SETTLE OFFICIAL RESULTS & FINAL TOTE ODDS CARD -->
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+                <h3 class="font-bold text-base text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-flag-checkered text-emerald-400"></i> Settle Race Results & Input Final Tote Odds
+                </h3>
+                <div id="adminSettleList" class="space-y-4">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- SUBVIEW 2: RACE ACCORDION EDITOR & DELETION TOOL -->
+        <div id="adminSub-editor" class="hidden space-y-6">
+            <!-- DELETE MEETING CARD -->
+            <div class="bg-slate-900 p-5 rounded-2xl border border-rose-900/50 space-y-3 shadow-xl">
+                <h3 class="font-bold text-base text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-trash text-rose-400"></i> Delete Meeting
+                </h3>
+                <p class="text-xs text-slate-400">
+                    Permanently deletes the meeting currently selected above (<span id="deleteMeetingNamePreview" class="text-slate-200 font-bold">-</span>), along with every race, result and tipster pick that belongs to it. This cannot be undone.
+                </p>
+                <button onclick="deleteMeeting(document.getElementById('meetingSelect').value)" class="bg-rose-700 hover:bg-rose-600 text-white font-extrabold px-5 py-2.5 rounded-xl transition text-xs flex items-center gap-2">
+                    <i class="fa-solid fa-trash-can"></i> Delete Selected Meeting
+                </button>
+            </div>
+
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+                <h3 class="font-bold text-base text-slate-100 flex items-center justify-between">
+                    <span><i class="fa-solid fa-sliders text-amber-400 mr-2"></i> Races Accordion & Deletion Tool</span>
+                    <span class="text-xs text-slate-400">Click any race to open editor dropdown</span>
+                </h3>
+                <div id="adminRacesAccordion" class="space-y-3">
+                    <!-- Dynamic Accordions -->
+                </div>
+            </div>
+        </div>
+
+        <!-- SUBVIEW 3: USERS MANAGEMENT (TIPSTERS VS ADMINS) -->
+        <div id="adminSub-users" class="hidden space-y-6">
+            <!-- Auto-Approval Toggle -->
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 flex items-center justify-between gap-4 shadow-xl">
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-user-check text-amber-400 text-xl mt-0.5"></i>
+                    <div>
+                        <h3 class="font-bold text-sm text-slate-100">Auto-Approve New Sign-Ups</h3>
+                        <p class="text-xs text-slate-400">When on, new registrations are approved instantly so people can log in even when you're not around to approve them manually.</p>
+                    </div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input type="checkbox" id="adminAutoApproveToggle" onchange="toggleAutoApprove()" class="sr-only peer">
+                    <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-600 transition-colors"></div>
+                    <div class="absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full transition-transform peer-checked:translate-x-5"></div>
+                </label>
+            </div>
+
+            <!-- Account Creator -->
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+                <h3 class="font-bold text-sm text-slate-100">Create Account (Auto-Approved)</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <input type="text" id="adminCreateUsername" placeholder="Username" class="bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white">
+                    <input type="text" id="adminCreateDisplayName" placeholder="Display Name" class="bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white">
+                    <input type="password" id="adminCreatePIN" placeholder="4-Digit PIN" class="bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white">
+                    <select id="adminCreateRole" class="bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white font-semibold">
+                        <option value="tipster">Role: Tipster</option>
+                        <option value="admin">Role: Admin</option>
+                    </select>
+                </div>
+                <button onclick="adminCreateAccount()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs">Create Account</button>
+            </div>
+
+            <!-- Role Filtered User Tables -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Tipsters Table -->
+                <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-3 shadow-xl">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-bold text-sm text-amber-400 flex items-center gap-2"><i class="fa-solid fa-users"></i> Registered Tipsters</h3>
+                        <button onclick="removeAllTipsters()" class="text-[10px] bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800 px-2 py-1 rounded flex items-center gap-1">
+                            <i class="fa-solid fa-trash"></i> Remove All Tipsters
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-950 text-slate-400 uppercase font-bold">
+                                <tr>
+                                    <th class="p-2.5">Username / Name</th>
+                                    <th class="p-2.5">Status</th>
+                                    <th class="p-2.5 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminTipstersTableBody" class="divide-y divide-slate-800">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Admins Table -->
+                <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-3 shadow-xl">
+                    <h3 class="font-bold text-sm text-rose-400 flex items-center gap-2"><i class="fa-solid fa-user-shield"></i> System Administrators</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-950 text-slate-400 uppercase font-bold">
+                                <tr>
+                                    <th class="p-2.5">Username / Name</th>
+                                    <th class="p-2.5">Status</th>
+                                    <th class="p-2.5 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminAdminsTableBody" class="divide-y divide-slate-800">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUBVIEW 4: SHARED SUPABASE DATABASE -->
+        <div id="adminSub-database" class="hidden space-y-6">
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+                <h3 class="font-bold text-base text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-database text-amber-400"></i> Shared Supabase Database
+                </h3>
+                <p class="text-xs text-slate-400 leading-relaxed">
+                    This app is wired directly to a shared Supabase project — the same one your football tipster site uses — so it connects automatically on every device with no setup step. Accounts live in a shared <code class="text-amber-400">profiles</code> table, and nothing is cached in this browser: every visit and every save goes straight to the cloud.
+                </p>
+                <div id="dbStatusBadge" class="text-xs"></div>
+                <p class="text-[11px] text-slate-500">To point this app at a different Supabase project, edit the <code class="text-amber-400">SUPABASE_URL</code> and <code class="text-amber-400">SUPABASE_ANON_KEY</code> constants near the top of the JavaScript in this file.</p>
+            </div>
+
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-3 shadow-xl">
+                <h3 class="font-bold text-sm text-slate-100 flex items-center gap-2"><i class="fa-solid fa-terminal text-emerald-400"></i> One-Time Setup SQL</h3>
+                <p class="text-xs text-slate-400">Already run once for this project — kept here only for reference (e.g. if you ever set up a fresh Supabase project). Safe to re-run any time; it uses <code class="text-amber-400">if not exists</code>.</p>
+                <pre class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-[10px] text-emerald-300 overflow-x-auto custom-scrollbar">create table if not exists profiles (
+  username text primary key,
+  display_name text not null,
+  pin_hash text not null,
+  role text not null default 'tipster' check (role in ('tipster','admin')),
+  approved boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table profiles enable row level security;
+create policy "Shared read access" on profiles for select using (true);
+create policy "Shared insert access" on profiles for insert with check (true);
+create policy "Shared update access" on profiles for update using (true);
+create policy "Shared delete access" on profiles for delete using (true);
+
+create table if not exists app_state (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz default now()
+);
+alter table app_state enable row level security;
+create policy "Read app_state" on app_state for select using (true);
+create policy "Insert app_state" on app_state for insert with check (true);
+create policy "Update app_state" on app_state for update using (true);</pre>
+                <p class="text-[11px] text-slate-500 leading-relaxed">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-500"></i> These open policies let anyone holding the anon key read/write this data — fine for a private friend league where the key isn't published, but not a substitute for real auth. Races/predictions stay in <code class="text-amber-400">app_state</code> (one row per site); only <code class="text-amber-400">profiles</code> is shared between your two sites.
+                </p>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<footer class="border-t border-slate-800 bg-slate-950 mt-auto">
+    <div class="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div class="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 font-black text-lg shrink-0">NB</div>
+            <div class="flex-1">
+                <h4 class="text-white font-bold">Nikhil S. Beersing</h4>
+                <p class="text-xs text-slate-400">Founder &amp; Analyst &mdash; Sports Analytics &amp; Digital Content Strategist</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="https://www.facebook.com/Nikhil.S.Beersing" target="_blank" rel="noopener" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1.5">
+                    <i class="fa-brands fa-facebook text-amber-400"></i> Facebook
+                </a>
+                <a href="https://wa.me/23055376896" target="_blank" rel="noopener" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1.5">
+                    <i class="fa-brands fa-whatsapp text-emerald-400"></i> WhatsApp
+                </a>
+            </div>
+        </div>
+
+        <div class="text-[11px] leading-relaxed text-slate-500 text-center max-w-3xl mx-auto">
+            For entertainment purposes only, among a private group of friends. All points are notional, have no cash value, and cannot be purchased, redeemed, cashed out, or exchanged for money or prizes of value. No real money is wagered and no money changes hands through this app. Not affiliated with, endorsed by, or operated by any turf club, racing authority, or gambling regulator. Race data is used here only for private, non-commercial reference by this friend group. See <button onclick="switchTab('guide'); setTimeout(()=>document.getElementById('termsSection').scrollIntoView({behavior:'smooth'}), 50);" class="underline text-slate-400 hover:text-amber-400">Terms &amp; Conditions</button>.
+        </div>
+
+        <div class="text-center text-[11px] text-slate-600">&copy; 2026 Nikhil S. Beersing. Horse Racing Tipster Challenge.</div>
+    </div>
+</footer>
+
+<!-- AUTH MODAL -->
+<div id="authModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-4">
+        <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+        <div class="flex items-center gap-3">
+            <div class="p-2.5 rounded-xl shadow-lg text-white shrink-0 ring-1 ring-black/20" style="background: linear-gradient(to bottom, #EA2839 0%, #EA2839 25%, #1A206D 25%, #1A206D 50%, #FFD500 50%, #FFD500 75%, #00A551 75%, #00A551 100%);">
+                <i class="fa-solid fa-horse-head text-lg drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]"></i>
+            </div>
+            <h2 id="authModalTitle" class="text-xl font-bold text-white">Tipster Login</h2>
+        </div>
+
+        <form id="authForm" onsubmit="handleAuthSubmit(event)" autocomplete="off" class="space-y-4">
+            <div>
+                <label class="text-xs text-slate-400 block mb-1 font-semibold">Username</label>
+                <input type="text" id="authUsername" required autocomplete="off" placeholder="e.g. tipster_nikhil" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:ring-amber-500">
+            </div>
+            <div id="displayNameField" class="hidden">
+                <label class="text-xs text-slate-400 block mb-1 font-semibold">Display Name</label>
+                <input type="text" id="authDisplayName" autocomplete="off" placeholder="e.g. Nikhil Beersing" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:ring-amber-500">
+            </div>
+            <div>
+                <label class="text-xs text-slate-400 block mb-1 font-semibold">4-Digit PIN</label>
+                <input type="password" id="authPIN" required autocomplete="new-password" maxlength="8" placeholder="e.g. 1234" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:ring-amber-500 font-mono tracking-widest">
+            </div>
+            <p id="authErrorText" class="hidden text-xs text-rose-400 font-semibold"></p>
+
+            <button type="submit" id="authSubmitBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-2.5 rounded-lg transition text-xs">
+                Log In
+            </button>
+        </form>
+
+        <div class="text-center text-xs text-slate-400 pt-2 border-t border-slate-800">
+            <span id="authToggleText">Need an account?</span>
+            <button onclick="toggleAuthMode()" id="authToggleBtn" class="text-amber-400 font-bold hover:underline ml-1">Sign Up Here</button>
+        </div>
+    </div>
+</div>
+
+<!-- TIPSTER PICKS INSPECTOR MODAL -->
+<div id="inspectorModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 relative max-h-[90vh] flex flex-col shadow-2xl">
+        <button onclick="closeInspectorModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+        <h3 id="inspectorTitle" class="text-lg font-bold text-amber-400 mb-1">Tipster Predictions</h3>
+        <p id="inspectorSubtitle" class="text-xs text-slate-400 mb-4"></p>
+
+        <div id="inspectorContent" class="overflow-y-auto space-y-3 flex-1 custom-scrollbar pr-2">
+            <!-- Content injected dynamically -->
+        </div>
+    </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toastContainer" class="fixed top-20 right-4 z-50 space-y-2 pointer-events-none"></div>
+
+<!-- JAVASCRIPT LOGIC ENGINE -->
+<script>
+    // Hardcoded, shared Supabase project — same one the football tipster site uses, so this
+    // connects automatically on any device with no setup step, and accounts + data are shared.
+    const SUPABASE_URL = 'https://ilrvrxqclvxefzdbdgfq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlscnZyeHFjbHZ4ZWZ6ZGJkZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5Nzc1NTcsImV4cCI6MjEwNDU1MzU1N30.zkCbxoAYegWLL0RWA18VCw3FxqMXUSlf9sohAVmVH_o';
+
+    let supabaseClient = null;
+    let authMode = 'login';
+    // No local session — nothing is cached in this browser, so every visit reads straight
+    // from Supabase and you'll need to log in again (that's intentional: it's what makes
+    // switching browsers/devices always show the same data instead of a stale local copy).
+    let currentUser = null;
+
+    let barChartInstance = null;
+    let pieChartInstance = null;
+    let stablesChartInstance = null;
+    let currentStablesSubView = 'stables';
+
+    // In-memory only. Always populated fresh from Supabase on load — never written to
+    // localStorage — so this browser can never show stale or out-of-sync data.
+    let appState = {
+        meetings: [],
+        races: [],
+        predictions: {},
+        profiles: [],
+        settings: {
+            // When true, new sign-ups are approved instantly instead of waiting for an admin.
+            autoApprove: false
+        }
+    };
+
+    const PROFILES_TABLE = 'profiles'; // shared table — same one your other tipster site uses
+    let autoSaveTimeout = null;
+
+    window.onload = async function() {
+        await initSupabaseClient();
+        updateAuthUI();
+        populateMeetingDropdowns();
+        renderRaces();
+        renderLeaderboard();
+        renderStablesAndJockeys();
+        if (currentUser && currentUser.role === 'admin') {
+            renderAdminUsersTables();
+            renderAdminAccordion();
+        }
+        renderDbStatus();
+    };
+
+    async function initSupabaseClient() {
+        if (!window.supabase) {
+            showToast('Could not load the database library — check your internet connection', 'error');
+            return;
+        }
+        try {
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            await loadCloudAppState();
+            await refreshProfilesFromSupabase();
+        } catch(e) {
+            console.error('Supabase init failed', e);
+            showToast('Could not reach the database — check your internet connection', 'error');
+            supabaseClient = null;
+        }
+    }
+
+    // Pulls races/meetings/predictions/settings from the shared "app_state" row.
+    // User accounts are NOT part of this — they live in their own "profiles" table (see below)
+    // so they can be shared with another site connected to the same Supabase project.
+    async function loadCloudAppState() {
+        if (!supabaseClient) return;
+        const { data, error } = await supabaseClient.from('app_state').select('data').eq('id', 'main').maybeSingle();
+        if (error) { console.error('Cloud load error:', error); showToast('Could not load challenge data from the database', 'error'); return; }
+        if (data && data.data) {
+            const cloud = data.data;
+            appState.meetings = cloud.meetings || appState.meetings;
+            appState.races = cloud.races || appState.races;
+            appState.predictions = cloud.predictions || appState.predictions;
+            appState.settings = cloud.settings || appState.settings;
+        }
+    }
+
+    // Pulls the shared user accounts table. Any account created on another site connected
+    // to this same Supabase project (e.g. the football tipster challenge) will show up here.
+    async function refreshProfilesFromSupabase() {
+        if (!supabaseClient) return;
+        const { data, error } = await supabaseClient.from(PROFILES_TABLE).select('*');
+        if (error) { console.error('Profile load error:', error); showToast('Could not load shared accounts', 'error'); return; }
+        appState.profiles = data || [];
+        renderAdminUsersTables();
+        updateAuthUI();
+    }
+
+    function renderDbStatus() {
+        const el = document.getElementById('dbStatusBadge');
+        if (!el) return;
+        el.innerHTML = supabaseClient
+            ? '<span class="bg-emerald-950 text-emerald-400 border-emerald-800 border px-2 py-1 rounded font-bold"><i class="fa-solid fa-circle-check"></i> Connected — running live from Supabase, shared with the football site</span>'
+            : '<span class="bg-rose-950 text-rose-400 border-rose-800 border px-2 py-1 rounded font-bold"><i class="fa-solid fa-triangle-exclamation"></i> Not connected — check your internet connection and reload the page</span>';
+    }
+
+    function saveAppState() {
+        if (!supabaseClient) { showToast('Not connected to the database — this change was not saved. Reload and try again.', 'error'); return; }
+        // Accounts sync separately to the shared "profiles" table — don't duplicate them here.
+        const { profiles, ...cloudData } = appState;
+        supabaseClient.from('app_state').upsert({ id: 'main', data: cloudData, updated_at: new Date() })
+            .then(({ error }) => { if (error) { console.error('Cloud sync error:', error); showToast('Could not save to the database', 'error'); } });
+    }
+
+    function openAuthModal(mode = 'login') {
+        authMode = mode;
+        document.getElementById('authForm').reset();
+        document.getElementById('authErrorText').classList.add('hidden');
+        document.getElementById('authModalTitle').innerText = mode === 'login' ? 'Tipster Login' : 'Register New Account';
+        document.getElementById('displayNameField').classList.toggle('hidden', mode === 'login');
+        document.getElementById('authSubmitBtn').innerText = mode === 'login' ? 'Log In' : 'Submit Registration';
+        document.getElementById('authToggleText').innerText = mode === 'login' ? "Need an account?" : "Already registered?";
+        document.getElementById('authToggleBtn').innerText = mode === 'login' ? "Sign Up Here" : "Log In Here";
+        document.getElementById('authModal').classList.remove('hidden');
+    }
+
+    function closeAuthModal() {
+        document.getElementById('authModal').classList.add('hidden');
+    }
+
+    function toggleAuthMode() {
+        openAuthModal(authMode === 'login' ? 'signup' : 'login');
+    }
+
+    // Lightweight client-side PIN hash. This is NOT cryptographically strong — it exists only
+    // to stop casual/accidental logins as someone else within a trusted friend group. Do not
+    // reuse this pattern for anything that needs real security (see chat notes on Supabase Auth).
+    async function hashPin(pin, username) {
+        const enc = new TextEncoder().encode(`${username}::${pin}::mru-tipster-salt`);
+        const digest = await crypto.subtle.digest('SHA-256', enc);
+        return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function showAuthError(msg) {
+        const el = document.getElementById('authErrorText');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    }
+
+    async function handleAuthSubmit(e) {
+        e.preventDefault();
+        document.getElementById('authErrorText').classList.add('hidden');
+        const username = document.getElementById('authUsername').value.trim().toLowerCase();
+        const pin = document.getElementById('authPIN').value.trim();
+
+        if (!username || !pin) return showToast('Please enter username and PIN', 'error');
+        if (!/^\d{4,8}$/.test(pin)) return showToast('PIN must be 4-8 digits', 'error');
+        if (!supabaseClient) return showAuthError('Not connected to the database. Check your internet connection and reload the page.');
+
+        const pinHash = await hashPin(pin, username);
+
+        if (authMode === 'login') {
+            // Case-insensitive: the football site stores usernames with mixed case (e.g. "Yadav"),
+            // but this app always lowercases what's typed — ilike matches regardless of case.
+            const { data: profile, error } = await supabaseClient.from(PROFILES_TABLE).select('*').ilike('username', username).maybeSingle();
+            if (error) return showAuthError('Could not reach the database. Try again.');
+            if (!profile) return showAuthError('Account not found.');
+
+            if (!profile.pin_hash) {
+                // This account was created on the other site (no PIN set yet there) — the PIN just
+                // entered becomes their PIN here, going forward, instead of silently accepting any PIN.
+                const { error: setErr } = await supabaseClient.from(PROFILES_TABLE).update({ pin_hash: pinHash }).eq('username', profile.username);
+                if (setErr) return showAuthError('Could not set your PIN. Try again.');
+                profile.pin_hash = pinHash;
+                showToast('PIN set for your account — use it to log in from now on.', 'info');
+            } else if (profile.pin_hash !== pinHash) {
+                return showAuthError('Incorrect PIN.');
+            }
+
+            if (!profile.approved) return showToast('Account pending admin approval', 'warning');
+
+            currentUser = { ...profile };
+            delete currentUser.pin_hash;
+            showToast(`Welcome back, ${currentUser.display_name}!`, 'success');
+            closeAuthModal();
+            updateAuthUI();
+            renderRaces();
+        } else {
+            const displayName = document.getElementById('authDisplayName').value.trim() || username;
+            const autoApproved = !!(appState.settings && appState.settings.autoApprove);
+            const newProfile = {
+                username,
+                display_name: displayName,
+                pin_hash: pinHash,
+                role: 'tipster',
+                approved: autoApproved,
+                created_at: new Date().toISOString()
+            };
+
+            const { data: existing } = await supabaseClient.from(PROFILES_TABLE).select('username').ilike('username', username).maybeSingle();
+            if (existing) return showAuthError('Username already taken.');
+            const { error } = await supabaseClient.from(PROFILES_TABLE).insert(newProfile);
+            if (error) return showAuthError('Registration failed: ' + error.message);
+            await refreshProfilesFromSupabase();
+
+            showToast(autoApproved ? 'Account created and approved automatically!' : 'Registration submitted! Awaiting admin approval.', 'info');
+            closeAuthModal();
+        }
+    }
+
+    function logout() {
+        currentUser = null;
+        updateAuthUI();
+        switchTab('racecard');
+        showToast('Logged out successfully', 'info');
+    }
+
+    function updateAuthUI() {
+        const loggedIn = !!currentUser;
+        document.getElementById('userHeaderInfo').classList.toggle('hidden', !loggedIn);
+        document.getElementById('guestHeaderInfo').classList.toggle('hidden', loggedIn);
+        document.getElementById('tipsterBankBar').classList.toggle('hidden', !loggedIn);
+
+        if (loggedIn) {
+            document.getElementById('headerDisplayName').innerText = currentUser.display_name;
+            document.getElementById('headerRoleBadge').innerText = currentUser.role;
+            
+            const isAdmin = currentUser.role === 'admin';
+            document.getElementById('adminTabNav').classList.toggle('hidden', !isAdmin);
+
+            const pendingCount = appState.profiles.filter(p => !p.approved).length;
+            const pendingBadge = document.getElementById('pendingBadge');
+            const pendingBadgeSub = document.getElementById('pendingBadgeSub');
+
+            if (pendingCount > 0) {
+                pendingBadge.innerText = pendingCount;
+                pendingBadgeSub.innerText = pendingCount;
+                pendingBadge.classList.remove('hidden');
+            } else {
+                pendingBadge.classList.add('hidden');
+            }
+        }
+    }
+
+    function populateMeetingDropdowns() {
+        const meetingSelect = document.getElementById('meetingSelect');
+        const leaderboardScope = document.getElementById('leaderboardScopeSelect');
+        const previousSelection = meetingSelect.value;
+
+        // Meetings that still have at least one unsettled race are listed first, so the
+        // app always lands on something that still needs picks or results, not a meeting
+        // that's already fully settled.
+        const sortedMeetings = [...appState.meetings].sort((a, b) => {
+            const aPending = meetingHasPendingRaces(a.id) ? 0 : 1;
+            const bPending = meetingHasPendingRaces(b.id) ? 0 : 1;
+            return aPending - bPending;
+        });
+
+        meetingSelect.innerHTML = sortedMeetings.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        leaderboardScope.innerHTML = `<option value="overall">Overall Season Leaderboard</option>` + 
+            sortedMeetings.map(m => `<option value="${m.id}">${m.name} Only</option>`).join('');
+
+        // Keep whatever the user already had selected if it still exists; otherwise this
+        // naturally defaults to the first (pending) meeting in the sorted list.
+        if (previousSelection && sortedMeetings.some(m => m.id === previousSelection)) {
+            meetingSelect.value = previousSelection;
+        }
+
+        updateDeleteMeetingPreview();
+    }
+
+    function meetingHasPendingRaces(meetingId) {
+        return appState.races.some(r => r.meetingId === meetingId && r.status !== 'FINISHED');
+    }
+
+    function updateDeleteMeetingPreview() {
+        const el = document.getElementById('deleteMeetingNamePreview');
+        if (!el) return;
+        const meetingId = document.getElementById('meetingSelect').value;
+        const meeting = appState.meetings.find(m => m.id === meetingId);
+        el.textContent = meeting ? meeting.name : '-';
+    }
+
+    function deleteMeeting(meetingId) {
+        const meeting = appState.meetings.find(m => m.id === meetingId);
+        if (!meeting) return showToast('No meeting selected to delete', 'warning');
+        if (!confirm(`Delete meeting "${meeting.name}" and ALL its races, results, and tipster picks? This cannot be undone.`)) return;
+
+        appState.meetings = appState.meetings.filter(m => m.id !== meetingId);
+        appState.races = appState.races.filter(r => r.meetingId !== meetingId);
+        if (appState.predictions) delete appState.predictions[meetingId];
+
+        saveAppState();
+        populateMeetingDropdowns();
+        onMeetingChange();
+        renderLeaderboard();
+        showToast(`Meeting "${meeting.name}" deleted.`, 'success');
+    }
+
+    function onMeetingChange() {
+        renderRaces();
+        renderStablesAndJockeys();
+        renderRaceAnalysis();
+        renderAdminSettleList();
+        renderAdminAccordion();
+        updateDeleteMeetingPreview();
+    }
+
+    // WIN PROBABILITY CALCULATOR
+    function calculateRunnerProbabilities(runners) {
+        const totalImpliedProb = runners.reduce((sum, r) => sum + (1 / (r.odds || 2.0)), 0);
+        return runners.map(r => {
+            const rawProb = (1 / (r.odds || 2.0)) / totalImpliedProb;
+            const pct = (rawProb * 100).toFixed(1);
+            return { ...r, probPct: parseFloat(pct) };
+        });
+    }
+
+    function setQuickStake(raceId, value) {
+        if (!currentUser) return openAuthModal('login');
+        const stakeInput = document.getElementById(`stake_${raceId}`);
+        if (stakeInput) {
+            stakeInput.value = value;
+            autoSavePicks();
+        }
+    }
+
+    function renderRaces() {
+        const meetingId = document.getElementById('meetingSelect').value;
+        const container = document.getElementById('racesList');
+        const races = appState.races.filter(r => r.meetingId === meetingId).sort((a,b) => a.raceNumber - b.raceNumber);
+
+        if (races.length === 0) {
+            container.innerHTML = `
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-400">
+                    <i class="fa-solid fa-horse text-4xl mb-3 text-slate-600"></i>
+                    <p class="font-bold">No races published for this meeting yet.</p>
+                </div>`;
+            return;
+        }
+
+        const firstRace = races[0];
+        const race1Deadline = new Date(new Date(firstRace.scheduledTime).getTime() - 60000);
+        const isLocked = new Date() > race1Deadline;
+
+        document.getElementById('lockStatusBadge').innerText = isLocked ? 'LOCKED' : 'OPEN';
+        document.getElementById('lockStatusBadge').className = isLocked ? 
+            'ml-2 uppercase text-[10px] px-2 py-0.5 rounded font-black bg-rose-950 text-rose-400 border border-rose-800' :
+            'ml-2 uppercase text-[10px] px-2 py-0.5 rounded font-black bg-emerald-950 text-emerald-400 border border-emerald-800';
+
+        const userPicks = (currentUser && appState.predictions[meetingId] && appState.predictions[meetingId][currentUser.username]) || { raceStakes: {} };
+
+        container.innerHTML = races.map(race => {
+            const racePick = userPicks.raceStakes[race.id] || { horseNo: null, stake: 100 };
+            const runnersWithProb = calculateRunnerProbabilities(race.runners);
+
+            return `
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                <div class="bg-slate-950 px-5 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center space-x-3">
+                        <span class="bg-amber-500 text-slate-950 font-black text-xs px-2.5 py-1 rounded-lg">RACE ${race.raceNumber}</span>
+                        <span class="font-bold text-white text-sm">${race.distance} • ${race.raceClass}</span>
+                    </div>
+                    <div class="text-xs text-slate-400 flex items-center gap-2">
+                        <i class="fa-solid fa-clock text-amber-400"></i> ${new Date(race.scheduledTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        ${race.status === 'FINISHED' ? `<span class="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] px-2 py-0.5 rounded font-bold">SETTLED</span>` : ''}
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-900/60 text-slate-400 uppercase tracking-wider border-b border-slate-800 font-bold">
+                                <th class="p-3 text-center w-12">Pick</th>
+                                <th class="p-3 text-center w-10">No</th>
+                                <th class="p-3">Horse Name</th>
+                                <th class="p-3">Jockey / Trainer</th>
+                                <th class="p-3 text-center">Draw / Carried Weight</th>
+                                <th class="p-3 text-center">Rating</th>
+                                <th class="p-3 text-right w-44">Win Probability</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60 font-medium">
+                            ${runnersWithProb.map(runner => {
+                                const isSelected = String(racePick.horseNo) === String(runner.no);
+                                const isWinner = race.winners && race.winners.includes(runner.no);
+                                const allowanceDisplay = runner.allowance ? `<span class="text-amber-400 font-bold ml-1">(${runner.allowance})</span>` : '';
+
+                                return `
+                                <tr class="hover:bg-slate-800/40 transition ${isSelected ? 'bg-amber-500/10 border-l-4 border-amber-500' : ''}">
+                                    <td class="p-3 text-center">
+                                        <input type="radio" name="race_${race.id}" value="${runner.no}" 
+                                            ${isSelected ? 'checked' : ''} 
+                                            ${isLocked || !currentUser ? 'disabled' : ''} 
+                                            onchange="autoSavePicks()"
+                                            class="w-4 h-4 text-amber-500 bg-slate-950 border-slate-700 focus:ring-amber-500 cursor-pointer">
+                                    </td>
+                                    <td class="p-3 text-center font-bold text-amber-400">${runner.no}</td>
+                                    <td class="p-3">
+                                        <div class="font-bold text-slate-100 flex items-center gap-1.5">
+                                            ${runner.horse}
+                                            ${runner.isEA ? `<span class="bg-rose-950 text-rose-400 border border-rose-800/60 text-[9px] px-1 rounded font-bold">EA</span>` : ''}
+                                            ${isWinner ? `<span class="bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.2 rounded"><i class="fa-solid fa-trophy"></i> WINNER</span>` : ''}
+                                        </div>
+                                        <div class="text-[10px] text-slate-500">Last: ${runner.lastRun} | Equip: ${runner.equip}</div>
+                                    </td>
+                                    <td class="p-3">
+                                        <div class="text-slate-200 font-semibold">${runner.jockey}</div>
+                                        <div class="text-[10px] text-slate-500">${runner.trainer}</div>
+                                    </td>
+                                    <td class="p-3 text-center text-slate-300 font-mono">
+                                        D${runner.draw} / ${runner.weight}kg ${allowanceDisplay}
+                                    </td>
+                                    <td class="p-3 text-center font-bold text-slate-400 font-mono">${runner.rating}</td>
+                                    <td class="p-3 text-right">
+                                        <div class="flex items-center justify-end gap-2 mb-1">
+                                            <span class="text-xs font-bold font-mono text-amber-400">${runner.probPct}%</span>
+                                        </div>
+                                        <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                                            <div class="bg-gradient-to-r from-amber-600 to-amber-400 h-2 rounded-full" style="width: ${runner.probPct}%"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- DIRECT QUANTITY CONTROL WITH QUICK OPTIONS -->
+                <div class="bg-slate-950 p-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-coins text-amber-400"></i> Quantity:
+                        </span>
+                        <input type="number" id="stake_${race.id}" min="100" step="50" value="${racePick.stake || 100}" 
+                            ${isLocked || !currentUser ? 'disabled' : ''} 
+                            oninput="autoSavePicks()" 
+                            class="w-28 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-right font-mono font-bold text-sm text-amber-400 focus:ring-amber-500 focus:border-amber-500">
+                        <span class="text-xs font-bold text-slate-400">pts</span>
+                    </div>
+
+                    <!-- Quick Quantity Chips -->
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="text-[11px] text-slate-400 font-semibold mr-1">Quick Select:</span>
+                        <button type="button" onclick="setQuickStake('${race.id}', 100)" ${isLocked || !currentUser ? 'disabled' : ''} class="text-xs bg-slate-900 hover:bg-slate-800 active:bg-amber-500 active:text-slate-950 text-slate-200 border border-slate-700 font-bold px-2.5 py-1 rounded-md transition">100</button>
+                        <button type="button" onclick="setQuickStake('${race.id}', 200)" ${isLocked || !currentUser ? 'disabled' : ''} class="text-xs bg-slate-900 hover:bg-slate-800 active:bg-amber-500 active:text-slate-950 text-slate-200 border border-slate-700 font-bold px-2.5 py-1 rounded-md transition">200</button>
+                        <button type="button" onclick="setQuickStake('${race.id}', 300)" ${isLocked || !currentUser ? 'disabled' : ''} class="text-xs bg-slate-900 hover:bg-slate-800 active:bg-amber-500 active:text-slate-950 text-slate-200 border border-slate-700 font-bold px-2.5 py-1 rounded-md transition">300</button>
+                        <button type="button" onclick="setQuickStake('${race.id}', 500)" ${isLocked || !currentUser ? 'disabled' : ''} class="text-xs bg-slate-900 hover:bg-slate-800 active:bg-amber-500 active:text-slate-950 text-slate-200 border border-slate-700 font-bold px-2.5 py-1 rounded-md transition">500</button>
+                        <button type="button" onclick="setQuickStake('${race.id}', 1000)" ${isLocked || !currentUser ? 'disabled' : ''} class="text-xs bg-slate-900 hover:bg-slate-800 active:bg-amber-500 active:text-slate-950 text-slate-200 border border-slate-700 font-bold px-2.5 py-1 rounded-md transition">1000</button>
+                    </div>
+                </div>
+            </div>
+            `;
+        }).join('');
+
+        populateExoticOptions(races, userPicks.double, userPicks.treble);
+        renderStakingSummary();
+    }
+
+    // Rebuilds the Double/Treble horse dropdowns for the active meeting AND restores
+    // any previously saved combo selections and quantities (savedDouble / savedTreble).
+    // Without restoring these, any later autosave (e.g. picking a single) would read the
+    // now-blank form fields and silently overwrite the saved combo with empty values
+    // — which is why doubles/trebles were not accounting into the leaderboard.
+    function populateExoticOptions(races, savedDouble, savedTreble) {
+        ['doubleLeg1', 'doubleLeg2', 'trebleLeg1', 'trebleLeg2', 'trebleLeg3'].forEach(legId => {
+            const sel = document.getElementById(legId);
+            if (!sel) return;
+            sel.innerHTML = `<option value="">Select Horse...</option>` + 
+                races.flatMap(r => r.runners.map(h => `<option value="${r.id}_${h.no}">R${r.raceNumber} - #${h.no} ${h.horse}</option>`)).join('');
+        });
+
+        const doubleLeg1El = document.getElementById('doubleLeg1');
+        const doubleLeg2El = document.getElementById('doubleLeg2');
+        const doubleStakeEl = document.getElementById('doubleStake');
+        if (doubleLeg1El) doubleLeg1El.value = savedDouble?.leg1 || '';
+        if (doubleLeg2El) doubleLeg2El.value = savedDouble?.leg2 || '';
+        if (doubleStakeEl) doubleStakeEl.value = savedDouble?.stake || '';
+
+        const trebleLeg1El = document.getElementById('trebleLeg1');
+        const trebleLeg2El = document.getElementById('trebleLeg2');
+        const trebleLeg3El = document.getElementById('trebleLeg3');
+        const trebleStakeEl = document.getElementById('trebleStake');
+        if (trebleLeg1El) trebleLeg1El.value = savedTreble?.leg1 || '';
+        if (trebleLeg2El) trebleLeg2El.value = savedTreble?.leg2 || '';
+        if (trebleLeg3El) trebleLeg3El.value = savedTreble?.leg3 || '';
+        if (trebleStakeEl) trebleStakeEl.value = savedTreble?.stake || '';
+    }
+
+    function autoSavePicks() {
+        renderStakingSummary();
+
+        if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+        autoSaveTimeout = setTimeout(() => {
+            if (currentUser) {
+                saveTipsterPicks(true);
+            }
+        }, 400);
+    }
+
+    function renderStakingSummary() {
+        if (!currentUser) return;
+
+        const meetingId = document.getElementById('meetingSelect').value;
+        const races = appState.races.filter(r => r.meetingId === meetingId);
+        
+        let totalSpent = 0;
+        let missingRaces = 0;
+
+        races.forEach(r => {
+            const stakeInput = document.getElementById(`stake_${r.id}`);
+            const stakeVal = stakeInput ? parseInt(stakeInput.value) || 0 : 100;
+            if (stakeVal < 100) missingRaces++;
+            totalSpent += stakeVal;
+        });
+
+        const doubleStake = parseInt(document.getElementById('doubleStake').value) || 0;
+        const trebleStake = parseInt(document.getElementById('trebleStake').value) || 0;
+        totalSpent += doubleStake + trebleStake;
+
+        const remaining = 5000 - totalSpent;
+        document.getElementById('bankRemainingDisplay').innerText = remaining.toLocaleString();
+        document.getElementById('totalAllocatedText').innerText = `${totalSpent.toLocaleString()} / 5,000 pts`;
+
+        const statusText = document.getElementById('bankStatusText');
+
+        if (remaining < 0) {
+            statusText.innerText = `Overbudget by ${Math.abs(remaining)} points!`;
+            statusText.className = 'text-rose-400 font-bold';
+        } else if (missingRaces > 0) {
+            statusText.innerText = `Min 100 pts mandatory per race (${missingRaces} missing)`;
+            statusText.className = 'text-amber-400 font-bold';
+        } else {
+            statusText.innerText = `Valid allocation (${remaining} pts unallocated)`;
+            statusText.className = 'text-emerald-400 font-bold';
+        }
+    }
+
+    function saveTipsterPicks(isAuto = false) {
+        if (!currentUser) return;
+
+        const meetingId = document.getElementById('meetingSelect').value;
+        const races = appState.races.filter(r => r.meetingId === meetingId);
+
+        if (races.length === 0) return;
+
+        const race1Deadline = new Date(new Date(races[0].scheduledTime).getTime() - 60000);
+        if (new Date() > race1Deadline) {
+            if (!isAuto) showToast('Deadline passed! Picks locked for this meeting.', 'error');
+            return;
+        }
+
+        const raceStakes = {};
+        for (const r of races) {
+            const selectedRadio = document.querySelector(`input[name="race_${r.id}"]:checked`);
+            const stakeVal = parseInt(document.getElementById(`stake_${r.id}`).value) || 100;
+
+            if (selectedRadio) {
+                raceStakes[r.id] = {
+                    horseNo: parseInt(selectedRadio.value),
+                    stake: stakeVal
+                };
+            }
+        }
+
+        const doubleVal = {
+            leg1: document.getElementById('doubleLeg1').value,
+            leg2: document.getElementById('doubleLeg2').value,
+            stake: parseInt(document.getElementById('doubleStake').value) || 0
+        };
+
+        const trebleVal = {
+            leg1: document.getElementById('trebleLeg1').value,
+            leg2: document.getElementById('trebleLeg2').value,
+            leg3: document.getElementById('trebleLeg3').value,
+            stake: parseInt(document.getElementById('trebleStake').value) || 0
+        };
+
+        if (!appState.predictions[meetingId]) appState.predictions[meetingId] = {};
+        appState.predictions[meetingId][currentUser.username] = {
+            raceStakes,
+            double: doubleVal,
+            treble: trebleVal,
+            updatedAt: new Date().toISOString()
+        };
+
+        saveAppState();
+
+        // Visual feedback for auto-save
+        const badge = document.getElementById('autoSaveIndicator');
+        if (badge) {
+            badge.classList.remove('hidden');
+            setTimeout(() => { badge.classList.add('hidden'); }, 1800);
+        }
+
+        renderLeaderboard();
+    }
+
+    // STABLES & JOCKEYS ANALYTICS VIEW
+    function toggleStablesSubView(sub) {
+        currentStablesSubView = sub;
+        document.getElementById('btnSubStables').className = sub === 'stables' ? 
+            'px-4 py-2 rounded-lg text-xs font-bold bg-amber-500 text-slate-950 shadow' : 
+            'px-4 py-2 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700';
+        document.getElementById('btnSubJockeys').className = sub === 'jockeys' ? 
+            'px-4 py-2 rounded-lg text-xs font-bold bg-amber-500 text-slate-950 shadow' : 
+            'px-4 py-2 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700';
+        
+        renderStablesAndJockeys();
+    }
+
+    function renderStablesAndJockeys() {
+        const meetingId = document.getElementById('meetingSelect').value;
+        const races = appState.races.filter(r => r.meetingId === meetingId);
+        const container = document.getElementById('stablesContainer');
+        const chartTitle = document.getElementById('stablesChartTitle');
+
+        if (races.length === 0) {
+            container.innerHTML = `<div class="p-6 text-center text-slate-500 font-bold bg-slate-900 border border-slate-800 rounded-2xl">No races available for analysis.</div>`;
+            return;
+        }
+
+        const map = {};
+
+        races.forEach(r => {
+            const runnersWithProb = calculateRunnerProbabilities(r.runners);
+            runnersWithProb.forEach(h => {
+                const key = currentStablesSubView === 'stables' ? (h.trainer || 'UNKNOWN STABLE') : (h.jockey || 'UNKNOWN JOCKEY');
+                if (!map[key]) {
+                    map[key] = { name: key, runners: [], totalProb: 0 };
+                }
+                map[key].runners.push({ ...h, raceNumber: r.raceNumber });
+                map[key].totalProb += h.probPct;
+            });
+        });
+
+        const sortedList = Object.values(map).sort((a,b) => b.totalProb - a.totalProb);
+
+        if (currentStablesSubView === 'stables') {
+            chartTitle.innerHTML = `<i class="fa-solid fa-house-flag text-amber-400"></i> Top Stables Total Win Probability Expectation`;
+        } else {
+            chartTitle.innerHTML = `<i class="fa-solid fa-user-ninja text-emerald-400"></i> Top Jockeys Total Win Probability Expectation`;
+        }
+
+        renderStablesChart(sortedList.slice(0, 7));
+
+        container.innerHTML = sortedList.map(item => `
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+                <div class="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 gap-2">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold text-sm">
+                            <i class="${currentStablesSubView === 'stables' ? 'fa-solid fa-warehouse' : 'fa-solid fa-user-ninja'}"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-white text-base leading-tight">${item.name}</h3>
+                            <span class="text-xs text-slate-400">${item.runners.length} Runner(s) in Meeting</span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-slate-400 font-semibold">Cumulative Win %</div>
+                        <div class="text-lg font-black text-amber-400 font-mono">${item.totalProb.toFixed(1)}%</div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead>
+                            <tr class="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
+                                <th class="p-2.5">Race</th>
+                                <th class="p-2.5">Horse Name</th>
+                                <th class="p-2.5">${currentStablesSubView === 'stables' ? 'Jockey' : 'Trainer'}</th>
+                                <th class="p-2.5 text-center">Draw / Carried Wgt</th>
+                                <th class="p-2.5 text-right">Win Probability</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60 font-medium">
+                            ${item.runners.map(h => `
+                                <tr>
+                                    <td class="p-2.5 font-bold text-amber-400">Race ${h.raceNumber}</td>
+                                    <td class="p-2.5 font-bold text-white">#${h.no} ${h.horse}</td>
+                                    <td class="p-2.5 text-slate-300">${currentStablesSubView === 'stables' ? h.jockey : h.trainer}</td>
+                                    <td class="p-2.5 text-center font-mono text-slate-300">
+                                        D${h.draw} / ${h.weight}kg ${h.allowance ? `<span class="text-amber-400 font-bold">(${h.allowance})</span>` : ''}
+                                    </td>
+                                    <td class="p-2.5 text-right font-mono font-bold text-amber-400">${h.probPct}%</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderStablesChart(topItems) {
+        const labels = topItems.map(i => i.name);
+        const values = topItems.map(i => parseFloat(i.totalProb.toFixed(1)));
+
+        if (stablesChartInstance) stablesChartInstance.destroy();
+
+        const ctx = document.getElementById('stablesBarChart').getContext('2d');
+        stablesChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels.length ? labels : ['No Data'],
+                datasets: [{
+                    label: 'Cumulative Win Probability %',
+                    data: values.length ? values : [0],
+                    backgroundColor: currentStablesSubView === 'stables' ? '#f59e0b' : '#10b981',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+                    y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+                }
+            }
+        });
+    }
+
+    function renderLeaderboard() {
+        const scope = document.getElementById('leaderboardScopeSelect').value;
+        const tbody = document.getElementById('leaderboardBody');
+
+        const tipsters = appState.profiles.filter(p => p.role === 'tipster' && p.approved);
+
+        const scores = tipsters.map(t => {
+            let singlesPoints = 0;
+            let doublesPoints = 0;
+            let treblesPoints = 0;
+            let racesPredicted = 0;
+            let winnersPicked = 0;
+
+            const meetingsToCalc = scope === 'overall' ? appState.meetings.map(m => m.id) : [scope];
+
+            meetingsToCalc.forEach(mId => {
+                const userPreds = appState.predictions[mId] && appState.predictions[mId][t.username];
+                if (!userPreds) return;
+
+                const mRaces = appState.races.filter(r => r.meetingId === mId && r.status === 'FINISHED');
+                
+                mRaces.forEach(r => {
+                    const pick = userPreds.raceStakes[r.id];
+                    if (pick) {
+                        racesPredicted++;
+                        if (r.winners && r.winners.includes(pick.horseNo)) {
+                            winnersPicked++;
+                            const winnerRunner = r.runners.find(h => String(h.no) === String(pick.horseNo));
+                            if (winnerRunner) {
+                                const deadHeatDivisor = r.winners.length || 1;
+                                const payoutOdds = (winnerRunner.finalOdds || winnerRunner.odds) / deadHeatDivisor;
+                                singlesPoints += (pick.stake * payoutOdds);
+                            }
+                        }
+                    }
+                });
+
+                if (userPreds.double && userPreds.double.stake >= 100 && userPreds.double.leg1 && userPreds.double.leg2) {
+                    const [r1Id, h1No] = userPreds.double.leg1.split('_');
+                    const [r2Id, h2No] = userPreds.double.leg2.split('_');
+                    const race1 = appState.races.find(r => r.id === r1Id);
+                    const race2 = appState.races.find(r => r.id === r2Id);
+
+                    if (race1?.winners?.includes(parseInt(h1No)) && race2?.winners?.includes(parseInt(h2No))) {
+                        const r1Runner = race1.runners.find(h => String(h.no) === String(h1No));
+                        const r2Runner = race2.runners.find(h => String(h.no) === String(h2No));
+                        const o1 = (r1Runner?.finalOdds || r1Runner?.odds || 1) / (race1.winners.length || 1);
+                        const o2 = (r2Runner?.finalOdds || r2Runner?.odds || 1) / (race2.winners.length || 1);
+                        doublesPoints += (userPreds.double.stake * o1 * o2);
+                    }
+                }
+
+                if (userPreds.treble && userPreds.treble.stake >= 100 && userPreds.treble.leg1 && userPreds.treble.leg2 && userPreds.treble.leg3) {
+                    const [r1Id, h1No] = userPreds.treble.leg1.split('_');
+                    const [r2Id, h2No] = userPreds.treble.leg2.split('_');
+                    const [r3Id, h3No] = userPreds.treble.leg3.split('_');
+                    const race1 = appState.races.find(r => r.id === r1Id);
+                    const race2 = appState.races.find(r => r.id === r2Id);
+                    const race3 = appState.races.find(r => r.id === r3Id);
+
+                    if (race1?.winners?.includes(parseInt(h1No)) && race2?.winners?.includes(parseInt(h2No)) && race3?.winners?.includes(parseInt(h3No))) {
+                        const r1Runner = race1.runners.find(h => String(h.no) === String(h1No));
+                        const r2Runner = race2.runners.find(h => String(h.no) === String(h2No));
+                        const r3Runner = race3.runners.find(h => String(h.no) === String(h3No));
+                        const o1 = (r1Runner?.finalOdds || r1Runner?.odds || 1) / (race1.winners.length || 1);
+                        const o2 = (r2Runner?.finalOdds || r2Runner?.odds || 1) / (race2.winners.length || 1);
+                        const o3 = (r3Runner?.finalOdds || r3Runner?.odds || 1) / (race3.winners.length || 1);
+                        treblesPoints += (userPreds.treble.stake * o1 * o2 * o3);
+                    }
+                }
+            });
+
+            const strikeRate = racesPredicted > 0 ? ((winnersPicked / racesPredicted) * 100).toFixed(1) : '0.0';
+            const totalPoints = Math.round(singlesPoints + doublesPoints + treblesPoints);
+
+            return {
+                username: t.username,
+                displayName: t.display_name,
+                racesPredicted,
+                winnersPicked,
+                singlesPoints: Math.round(singlesPoints),
+                doublesPoints: Math.round(doublesPoints),
+                treblesPoints: Math.round(treblesPoints),
+                strikeRate,
+                totalPoints
+            };
+        }).sort((a,b) => b.totalPoints - a.totalPoints);
+
+        if (scores.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-500">No approved tipsters registered yet.</td></tr>`;
+        } else {
+            tbody.innerHTML = scores.map((s, idx) => `
+                <tr class="hover:bg-slate-800/50 transition">
+                    <td class="p-4 font-bold text-amber-400 font-mono">#${idx + 1}</td>
+                    <td class="p-4 font-bold text-white">${s.displayName}</td>
+                    <td class="p-4 text-center font-mono text-slate-300">${s.singlesPoints.toLocaleString()}</td>
+                    <td class="p-4 text-center font-mono text-emerald-400">${s.doublesPoints.toLocaleString()}</td>
+                    <td class="p-4 text-center font-mono text-amber-400">${s.treblesPoints.toLocaleString()}</td>
+                    <td class="p-4 text-center font-mono text-slate-300">${s.strikeRate}%</td>
+                    <td class="p-4 text-right font-mono font-black text-amber-400 text-base">${s.totalPoints.toLocaleString()} pts</td>
+                    <td class="p-4 text-center">
+                        <button onclick="inspectTipsterPicks('${s.username}')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded border border-slate-700">
+                            <i class="fa-solid fa-eye"></i> View
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        renderLeaderboardCharts(scores);
+    }
+
+    function renderLeaderboardCharts(scores) {
+        const top5 = scores.slice(0, 5);
+        const labels = top5.map(s => s.displayName);
+        const pointsData = top5.map(s => s.totalPoints);
+        const strikeData = top5.map(s => parseFloat(s.strikeRate));
+
+        if (barChartInstance) barChartInstance.destroy();
+        const ctxBar = document.getElementById('leaderboardBarChart').getContext('2d');
+        barChartInstance = new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: labels.length ? labels : ['No Data'],
+                datasets: [{
+                    label: 'Total Points',
+                    data: pointsData.length ? pointsData : [0],
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+                    y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+                }
+            }
+        });
+
+        if (pieChartInstance) pieChartInstance.destroy();
+        const ctxPie = document.getElementById('strikeRatePieChart').getContext('2d');
+        pieChartInstance = new Chart(ctxPie, {
+            type: 'doughnut',
+            data: {
+                labels: labels.length ? labels : ['No Data'],
+                datasets: [{
+                    data: strikeData.length ? strikeData : [100],
+                    backgroundColor: ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12 } } }
+            }
+        });
+    }
+
+    function inspectTipsterPicks(targetUsername) {
+        const meetingId = document.getElementById('meetingSelect').value;
+        const races = appState.races.filter(r => r.meetingId === meetingId).sort((a,b) => a.raceNumber - b.raceNumber);
+
+        if (races.length === 0) return showToast('No races found', 'info');
+
+        const race1Deadline = new Date(new Date(races[0].scheduledTime).getTime() - 60000);
+        const isLocked = new Date() > race1Deadline;
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        const isSelf = currentUser && currentUser.username === targetUsername;
+
+        if (!isLocked && !isAdmin && !isSelf) {
+            return showToast('Tipster picks are locked until Race 1 post time!', 'warning');
+        }
+
+        const targetProfile = appState.profiles.find(p => p.username === targetUsername);
+        const pred = appState.predictions[meetingId] && appState.predictions[meetingId][targetUsername];
+
+        document.getElementById('inspectorTitle').innerText = `${targetProfile?.display_name || targetUsername}'s Predictions`;
+        document.getElementById('inspectorSubtitle').innerText = `Meeting: ${appState.meetings.find(m => m.id === meetingId)?.name}`;
+
+        const container = document.getElementById('inspectorContent');
+
+        if (!pred) {
+            container.innerHTML = `<div class="p-4 text-center text-slate-500">No picks submitted for this meeting.</div>`;
+        } else {
+            container.innerHTML = races.map(r => {
+                const pick = pred.raceStakes[r.id];
+                const runner = pick ? r.runners.find(h => String(h.no) === String(pick.horseNo)) : null;
+
+                return `
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-amber-400">RACE ${r.raceNumber}</span>
+                        <div class="text-sm font-bold text-white">${runner ? `#${runner.no} ${runner.horse}` : 'No Selection'}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-slate-400 font-mono">Quantity: ${pick ? pick.stake : 0} pts</div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        document.getElementById('inspectorModal').classList.remove('hidden');
+    }
+
+    function closeInspectorModal() {
+        document.getElementById('inspectorModal').classList.add('hidden');
+    }
+
+    // MULTI-PATTERN PARSER FOR RAW MAURITIUS DATA INCLUDING WEIGHT ALLOWANCE
+    function parseMauritiusRawLine(line) {
+        line = line.trim();
+        if (!line) return null;
+
+        // Extract potential weight allowance e.g. 57.5(-4) or (-4) or 57.5 -4kg
+        let allowanceStr = '';
+        const allowanceMatch = line.match(/\(-\d+(?:kg)?\)/i) || line.match(/-\d+kg/i);
+        if (allowanceMatch) {
+            allowanceStr = allowanceMatch[0].replace(/[\(\)]/g, '');
+            if (!allowanceStr.includes('kg')) allowanceStr += 'kg';
+        }
+
+        let parts = line.split(/\t+|\s{2,}/).map(s => s.trim()).filter(Boolean);
+
+        if (parts.length >= 10) {
+            const no = parseInt(parts[0]) || 1;
+            const horse = parts[1];
+            const age = parseInt(parts[2]) || 5;
+            const trainer = parts[3] || '-';
+            const equip = parts[4] || '-';
+            const weightVal = parseFloat(parts[5]) || 58.0;
+            const jockey = parts[6] || '-';
+            const draw = parseInt(parts[7]) || 1;
+            const rating = parseInt(parts[8]) || 50;
+            const lastRun = parts[9] || '-';
+            const treatments = parts[10] || '-';
+            let rawOdds = parts[11] || parts[10] || '250';
+            let oddsVal = parseFloat(rawOdds);
+            if (oddsVal > 50) oddsVal = oddsVal / 100;
+            if (isNaN(oddsVal) || oddsVal <= 0) oddsVal = 2.5;
+
+            return { no, horse, age, trainer, equip, weight: weightVal, allowance: allowanceStr, jockey, draw, rating, lastRun, treatments, odds: oddsVal, finalOdds: oddsVal, isEA: horse.includes('(EA)') };
+        }
+
+        // Single-space Tokenizer Fallback
+        const tokens = line.split(/\s+/);
+        if (tokens.length < 8) return null;
+
+        const no = parseInt(tokens[0]) || 1;
+        
+        let rawOdds = tokens[tokens.length - 1];
+        let oddsVal = parseFloat(rawOdds);
+        if (oddsVal > 50) oddsVal = oddsVal / 100;
+        if (isNaN(oddsVal) || oddsVal <= 0) oddsVal = 2.5;
+
+        let treatments = '-';
+        let lastRun = '-';
+        let rating = 50;
+        let draw = 1;
+
+        let cursor = tokens.length - 2;
+
+        if (isNaN(parseFloat(tokens[cursor]))) {
+            treatments = tokens[cursor];
+            cursor--;
+        }
+
+        lastRun = tokens[cursor] || '-';
+        cursor--;
+
+        rating = parseInt(tokens[cursor]) || 50;
+        cursor--;
+
+        draw = parseInt(tokens[cursor]) || 1;
+        cursor--;
+
+        let weightIdx = -1;
+        for (let i = cursor; i >= 1; i--) {
+            if (/^\d+(\.\d+)?(\(-\d+(?:kg)?\))?$/.test(tokens[i])) {
+                weightIdx = i;
+                break;
+            }
+        }
+
+        let horse = 'UNKNOWN';
+        let age = 5;
+        let trainer = '-';
+        let equip = '-';
+        let weight = 58.0;
+        let jockey = '-';
+
+        if (weightIdx !== -1) {
+            weight = parseFloat(tokens[weightIdx]);
+            equip = tokens[weightIdx - 1] || '-';
+
+            jockey = tokens.slice(weightIdx + 1, cursor + 1).join(' ') || '-';
+
+            let ageIdx = -1;
+            for (let i = 1; i < weightIdx - 1; i++) {
+                if (/^[3-9]$/.test(tokens[i])) {
+                    ageIdx = i;
+                    break;
+                }
+            }
+
+            if (ageIdx !== -1) {
+                age = parseInt(tokens[ageIdx]);
+                horse = tokens.slice(1, ageIdx).join(' ');
+                trainer = tokens.slice(ageIdx + 1, weightIdx - 1).join(' ');
+            } else {
+                horse = tokens.slice(1, weightIdx - 1).join(' ');
+            }
+        }
+
+        return { no, horse, age, trainer, equip, weight, allowance: allowanceStr, jockey, draw, rating, lastRun, treatments, odds: oddsVal, finalOdds: oddsVal, isEA: horse.includes('(EA)') };
+    }
+
+    function processAndSaveRaceData() {
+        const meetingName = document.getElementById('adminMeetingName').value.trim() || 'Meeting 1';
+        const raceNum = parseInt(document.getElementById('adminRaceNum').value) || 1;
+        const meta = document.getElementById('adminRaceMeta').value.trim() || '1400m | Benchmark 60';
+        const rawDate = document.getElementById('adminRaceDate').value;
+        const rawTime = document.getElementById('adminRaceTime').value.trim();
+        const rawData = document.getElementById('adminRawCardData').value.trim();
+
+        if (!rawData) return showToast('Please paste raw runner text data', 'error');
+
+        let meeting = appState.meetings.find(m => m.name === meetingName);
+        if (!meeting) {
+            meeting = { id: 'm_' + Date.now(), name: meetingName, season: '2026', status: 'UPCOMING' };
+            appState.meetings.push(meeting);
+        }
+
+        const lines = rawData.split('\n');
+        const runners = [];
+
+        lines.forEach(line => {
+            const runner = parseMauritiusRawLine(line);
+            if (runner) runners.push(runner);
+        });
+
+        if (runners.length === 0) return showToast('Could not parse runners from text', 'error');
+
+        const scheduledTime = buildPmDateTimeISO(rawDate, rawTime) || new Date(Date.now() + 86400000).toISOString();
+
+        const newRace = {
+            id: 'r_' + Date.now(),
+            meetingId: meeting.id,
+            raceNumber: raceNum,
+            distance: meta.split('|')[0]?.trim() || '1400m',
+            raceClass: meta.split('|')[1]?.trim() || 'Benchmark 60',
+            scheduledTime,
+            status: 'UPCOMING',
+            winners: [],
+            runners
+        };
+
+        appState.races = appState.races.filter(r => !(r.meetingId === meeting.id && r.raceNumber === raceNum));
+        appState.races.push(newRace);
+
+        saveAppState();
+        populateMeetingDropdowns();
+        renderRaces();
+        renderStablesAndJockeys();
+        renderAdminSettleList();
+        renderAdminAccordion();
+        showToast(`Race ${raceNum} saved with ${runners.length} runners!`, 'success');
+    }
+
+    function renderAdminSettleList() {
+        const meetingId = document.getElementById('meetingSelect').value;
+        const races = appState.races.filter(r => r.meetingId === meetingId).sort((a,b) => a.raceNumber - b.raceNumber);
+        const container = document.getElementById('adminSettleList');
+
+        if (races.length === 0) {
+            container.innerHTML = `<div class="text-xs text-slate-500">No races created yet for this meeting.</div>`;
+            return;
+        }
+
+        container.innerHTML = races.map(r => `
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div>
+                        <span class="text-xs font-bold text-amber-400">RACE ${r.raceNumber}</span>
+                        <span class="text-xs text-white font-bold ml-2">${r.distance} (${r.runners.length} runners)</span>
+                    </div>
+                    <span class="text-xs text-slate-400 font-bold">Input Final Tote Odds & Select Winner(s)</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    ${r.runners.map(h => `
+                        <div class="bg-slate-900 p-2 rounded border border-slate-800 flex items-center justify-between gap-2">
+                            <label class="flex items-center gap-2 text-xs text-slate-200 cursor-pointer flex-1 overflow-hidden">
+                                <input type="checkbox" name="settle_winner_${r.id}" value="${h.no}" 
+                                    ${r.winners && r.winners.includes(h.no) ? 'checked' : ''}
+                                    class="w-4 h-4 text-emerald-500 rounded border-slate-700">
+                                <span class="truncate font-semibold">#${h.no} ${h.horse}</span>
+                            </label>
+                            <div class="flex items-center gap-1">
+                                <span class="text-[10px] text-slate-400">Tote:</span>
+                                <input type="number" step="0.1" id="tote_odds_${r.id}_${h.no}" value="${h.finalOdds || h.odds}" class="w-16 bg-slate-950 border border-slate-700 text-right text-xs font-mono font-bold text-emerald-400 rounded p-1">
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="flex items-center justify-between pt-2">
+                    <span class="text-[11px] text-slate-400"><i class="fa-solid fa-circle-info text-amber-400 mr-1"></i> Check 2 runners for Dead-Heat</span>
+                    <button onclick="settleRaceWithDeadHeat('${r.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold px-4 py-2 rounded-lg flex items-center gap-1.5">
+                        <i class="fa-solid fa-trophy"></i> Confirm Final Winner(s) & Settle
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function settleRaceWithDeadHeat(raceId) {
+        const race = appState.races.find(r => r.id === raceId);
+        const checkedBoxes = document.querySelectorAll(`input[name="settle_winner_${raceId}"]:checked`);
+
+        if (checkedBoxes.length === 0) return showToast('Select at least 1 winner', 'warning');
+
+        const selectedWinners = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+
+        race.runners.forEach(h => {
+            const input = document.getElementById(`tote_odds_${raceId}_${h.no}`);
+            if (input) h.finalOdds = parseFloat(input.value) || h.odds;
+        });
+
+        race.winners = selectedWinners;
+        race.status = 'FINISHED';
+
+        saveAppState();
+        renderRaces();
+        renderLeaderboard();
+        showToast(`Race ${race.raceNumber} settled with ${selectedWinners.length} winner(s)!`, 'success');
+    }
+
+    // Race meetings only ever run in the afternoon/evening, so time entry never needs an
+    // AM/PM toggle (a common source of mis-set times). Any hour 1-11 typed by itself is
+    // read as that hour PM (e.g. "1:05" -> 13:05); 12 stays as 12 (noon); 13-23 are accepted
+    // as-is for anyone who prefers to type the 24-hour form directly (e.g. "13:05").
+    function resolvePmHour(hour) {
+        if (hour >= 13 && hour <= 23) return hour;
+        if (hour === 12) return 12;
+        if (hour >= 1 && hour <= 11) return hour + 12;
+        return 12;
+    }
+
+    function buildPmDateTimeISO(dateStr, timeStr) {
+        if (!dateStr || !timeStr) return null;
+        const m = timeStr.trim().match(/^(\d{1,2}):(\d{2})$/);
+        if (!m) return null;
+        const hour24 = resolvePmHour(parseInt(m[1], 10));
+        const minute = parseInt(m[2], 10);
+        if (minute > 59) return null;
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day, hour24, minute).toISOString();
+    }
+
+    function splitIsoToDateAndPmTime(isoString) {
+        const d = new Date(isoString);
+        const pad = n => String(n).padStart(2, '0');
+        return {
+            date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+            time: `${pad(d.getHours())}:${pad(d.getMinutes())}`
+        };
+    }
+
+    // RACE ACCORDION EDITOR & DELETION
+    function renderAdminAccordion() {
+        const container = document.getElementById('adminRacesAccordion');
+        const meetingId = document.getElementById('meetingSelect').value;
+        const races = appState.races.filter(r => r.meetingId === meetingId).sort((a,b) => a.raceNumber - b.raceNumber);
+
+        if (races.length === 0) {
+            container.innerHTML = `<div class="text-xs text-slate-500">No races found for this meeting.</div>`;
+            return;
+        }
+
+        container.innerHTML = races.map(r => `
+            <details class="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden group">
+                <summary class="p-4 font-bold text-sm text-white cursor-pointer hover:bg-slate-900 transition flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <span class="bg-amber-500 text-slate-950 text-xs px-2 py-0.5 rounded font-black">RACE ${r.raceNumber}</span>
+                        <span>${r.distance} • ${r.raceClass}</span>
+                        <span class="text-xs text-slate-400 font-normal">(${r.runners.length} runners)</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="deleteSingleRace('${r.id}', event)" class="bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/60 text-xs px-3 py-1 rounded-lg">
+                            <i class="fa-solid fa-trash-can"></i> Delete Race
+                        </button>
+                        <i class="fa-solid fa-chevron-down group-open:rotate-180 transition-transform"></i>
+                    </div>
+                </summary>
+                
+                <div class="p-4 border-t border-slate-800 space-y-4 bg-slate-900/50">
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                        <div>
+                            <label class="text-slate-400 block mb-1">Distance</label>
+                            <input type="text" id="edit_dist_${r.id}" value="${r.distance}" class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white">
+                        </div>
+                        <div>
+                            <label class="text-slate-400 block mb-1">Race Class</label>
+                            <input type="text" id="edit_class_${r.id}" value="${r.raceClass}" class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white">
+                        </div>
+                        <div>
+                            <label class="text-slate-400 block mb-1">Race Date</label>
+                            <input type="date" id="edit_date_${r.id}" value="${splitIsoToDateAndPmTime(r.scheduledTime).date}" class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white">
+                        </div>
+                        <div>
+                            <label class="text-slate-400 block mb-1">Post Time (PM)</label>
+                            <input type="text" id="edit_time_${r.id}" value="${splitIsoToDateAndPmTime(r.scheduledTime).time}" placeholder="e.g. 12:30" class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white">
+                        </div>
+                    </div>
+
+                    <button onclick="saveRaceAccordionEdits('${r.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2 rounded-lg">
+                        <i class="fa-solid fa-check mr-1"></i> Update Race Details
+                    </button>
+                </div>
+            </details>
+        `).join('');
+    }
+
+    function saveRaceAccordionEdits(raceId) {
+        const race = appState.races.find(r => r.id === raceId);
+        race.distance = document.getElementById(`edit_dist_${raceId}`).value.trim() || race.distance;
+        race.raceClass = document.getElementById(`edit_class_${raceId}`).value.trim() || race.raceClass;
+        const dateVal = document.getElementById(`edit_date_${raceId}`).value;
+        const timeVal = document.getElementById(`edit_time_${raceId}`).value.trim();
+        const newIso = buildPmDateTimeISO(dateVal, timeVal);
+        if (newIso) {
+            race.scheduledTime = newIso;
+        } else if (dateVal || timeVal) {
+            showToast('Time not saved — use a valid time like 12:30', 'warning');
+        }
+
+        saveAppState();
+        renderRaces();
+        renderAdminAccordion();
+        showToast(`Race ${race.raceNumber} updated!`, 'success');
+    }
+
+    function deleteSingleRace(raceId, e) {
+        e.stopPropagation();
+        if (!confirm('Are you sure you want to permanently delete this race?')) return;
+
+        appState.races = appState.races.filter(r => r.id !== raceId);
+        saveAppState();
+        renderRaces();
+        renderStablesAndJockeys();
+        renderAdminSettleList();
+        renderAdminAccordion();
+        showToast('Race deleted successfully!', 'info');
+    }
+
+    function toggleAutoApprove() {
+        if (!appState.settings) appState.settings = { autoApprove: false };
+        appState.settings.autoApprove = document.getElementById('adminAutoApproveToggle').checked;
+        saveAppState();
+        showToast(appState.settings.autoApprove ? 'New sign-ups will now be auto-approved.' : 'New sign-ups will now need manual approval.', 'info');
+    }
+
+    async function removeAllTipsters() {
+        const tipsterCount = appState.profiles.filter(p => p.role === 'tipster').length;
+        if (tipsterCount === 0) return showToast('There are no tipster accounts to remove.', 'info');
+        if (!confirm(`Remove all ${tipsterCount} tipster account(s)? Their saved picks will also be cleared. This cannot be undone.`)) return;
+        if (!supabaseClient) return showToast('Not connected to the database — try again', 'error');
+
+        const removedUsernames = new Set(appState.profiles.filter(p => p.role === 'tipster' && p.username !== PROTECTED_ADMIN_USERNAME).map(p => p.username));
+
+        const { error } = await supabaseClient.from(PROFILES_TABLE).delete().eq('role', 'tipster').neq('username', PROTECTED_ADMIN_USERNAME);
+        if (error) { showToast('Could not remove accounts: ' + error.message, 'error'); return; }
+        await refreshProfilesFromSupabase();
+
+        // Clean up any saved picks belonging to the removed tipsters.
+        Object.keys(appState.predictions || {}).forEach(meetingId => {
+            const meetingPreds = appState.predictions[meetingId];
+            removedUsernames.forEach(u => { delete meetingPreds[u]; });
+        });
+
+        // If the currently logged-in user was a removed tipster, log them out.
+        if (currentUser && removedUsernames.has(currentUser.username)) {
+            currentUser = null;
+            updateAuthUI();
+        }
+
+        saveAppState();
+        renderAdminUsersTables();
+        renderLeaderboard();
+        showToast('All tipster accounts have been removed.', 'success');
+    }
+
+    function renderAdminUsersTables() {
+        const tipstersBody = document.getElementById('adminTipstersTableBody');
+        const adminsBody = document.getElementById('adminAdminsTableBody');
+
+        const autoApproveToggle = document.getElementById('adminAutoApproveToggle');
+        if (autoApproveToggle) autoApproveToggle.checked = !!(appState.settings && appState.settings.autoApprove);
+
+        const tipsters = appState.profiles.filter(p => p.role === 'tipster');
+        const admins = appState.profiles.filter(p => p.role === 'admin');
+
+        tipstersBody.innerHTML = tipsters.map(p => `
+            <tr class="hover:bg-slate-800/40 transition">
+                <td class="p-2.5 font-bold text-white">${p.display_name} <span class="text-[10px] text-slate-500 font-mono">(${p.username})</span></td>
+                <td class="p-2.5">
+                    <span class="${p.approved ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-rose-950 text-rose-400 border-rose-800'} text-[9px] font-bold border px-1.5 py-0.2 rounded">
+                        ${p.approved ? 'APPROVED' : 'PENDING'}
+                    </span>
+                </td>
+                <td class="p-2.5 text-right space-x-1">
+                    <button onclick="toggleUserApproval('${p.username}')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-700">
+                        ${p.approved ? 'Revoke' : 'Approve'}
+                    </button>
+                    <button onclick="changeUserRole('${p.username}', 'admin')" class="text-[10px] bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800 px-2 py-1 rounded">
+                        Make Admin
+                    </button>
+                    <button onclick="removeSingleUser('${p.username}')" class="text-[10px] bg-slate-800 hover:bg-rose-900 text-rose-300 border border-rose-800 px-2 py-1 rounded">
+                        Remove
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        adminsBody.innerHTML = admins.map(p => `
+            <tr class="hover:bg-slate-800/40 transition">
+                <td class="p-2.5 font-bold text-white">${p.display_name} <span class="text-[10px] text-slate-500 font-mono">(${p.username})</span></td>
+                <td class="p-2.5">
+                    <span class="bg-rose-950 text-rose-400 border-rose-800 text-[9px] font-bold border px-1.5 py-0.2 rounded">
+                        ADMIN
+                    </span>
+                </td>
+                <td class="p-2.5 text-right space-x-1">
+                    ${p.username !== 'sarvesh05' ? `
+                        <button onclick="changeUserRole('${p.username}', 'tipster')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-700">
+                            Demote to Tipster
+                        </button>
+                        <button onclick="removeSingleUser('${p.username}')" class="text-[10px] bg-slate-800 hover:bg-rose-900 text-rose-300 border border-rose-800 px-2 py-1 rounded">
+                            Remove
+                        </button>
+                    ` : '<span class="text-[10px] text-slate-500">Super Admin &mdash; protected</span>'}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function toggleUserApproval(username) {
+        const profile = appState.profiles.find(p => p.username === username);
+        if (!profile) return;
+        if (!supabaseClient) return showToast('Not connected to the database — try again', 'error');
+        const newApproved = !profile.approved;
+
+        const { error } = await supabaseClient.from(PROFILES_TABLE).update({ approved: newApproved }).eq('username', username);
+        if (error) { showToast('Update failed: ' + error.message, 'error'); return; }
+        await refreshProfilesFromSupabase();
+        showToast(`Status updated for ${username}`, 'info');
+    }
+
+    const PROTECTED_ADMIN_USERNAME = 'sarvesh05';
+
+    async function changeUserRole(username, newRole) {
+        if (username === PROTECTED_ADMIN_USERNAME) return showToast('The main admin account cannot be changed.', 'error');
+        if (!supabaseClient) return showToast('Not connected to the database — try again', 'error');
+
+        const { error } = await supabaseClient.from(PROFILES_TABLE).update({ role: newRole }).eq('username', username);
+        if (error) { showToast('Update failed: ' + error.message, 'error'); return; }
+        await refreshProfilesFromSupabase();
+        showToast(`Role updated to ${newRole} for ${username}`, 'success');
+    }
+
+    async function removeSingleUser(username) {
+        if (username === PROTECTED_ADMIN_USERNAME) return showToast('The main admin account cannot be deleted.', 'error');
+        const profile = appState.profiles.find(p => p.username === username);
+        if (!profile) return;
+        if (!confirm(`Remove the account "${profile.display_name}" (${username})? This cannot be undone.`)) return;
+        if (!supabaseClient) return showToast('Not connected to the database — try again', 'error');
+
+        const { error } = await supabaseClient.from(PROFILES_TABLE).delete().eq('username', username);
+        if (error) { showToast('Remove failed: ' + error.message, 'error'); return; }
+        await refreshProfilesFromSupabase();
+
+        Object.keys(appState.predictions || {}).forEach(meetingId => {
+            delete appState.predictions[meetingId][username];
+        });
+
+        if (currentUser && currentUser.username === username) {
+            currentUser = null;
+            updateAuthUI();
+        }
+
+        saveAppState();
+        renderAdminUsersTables();
+        renderLeaderboard();
+        showToast(`Account ${username} removed.`, 'success');
+    }
+
+    async function adminCreateAccount() {
+        const username = document.getElementById('adminCreateUsername').value.trim().toLowerCase();
+        const displayName = document.getElementById('adminCreateDisplayName').value.trim() || username;
+        const pin = document.getElementById('adminCreatePIN').value.trim();
+        const role = document.getElementById('adminCreateRole').value;
+
+        if (!username || !pin) return showToast('Username and PIN required', 'warning');
+        if (!/^\d{4,8}$/.test(pin)) return showToast('PIN must be 4-8 digits', 'warning');
+        if (!supabaseClient) return showToast('Not connected to the database — try again', 'error');
+
+        const newProfile = {
+            username,
+            display_name: displayName,
+            pin_hash: await hashPin(pin, username),
+            role,
+            approved: true,
+            created_at: new Date().toISOString()
+        };
+
+        const { data: existing } = await supabaseClient.from(PROFILES_TABLE).select('username').ilike('username', username).maybeSingle();
+        if (existing) return showToast('Username already exists', 'error');
+        const { error } = await supabaseClient.from(PROFILES_TABLE).insert(newProfile);
+        if (error) return showToast('Create failed: ' + error.message, 'error');
+        await refreshProfilesFromSupabase();
+        showToast(`Account ${username} created!`, 'success');
+    }
+
+    // ===== RACE ANALYSIS: best chance + main danger per race =====
+    function renderRaceAnalysis() {
+        const sel = document.getElementById('meetingSelect');
+        const container = document.getElementById('analysisContainer');
+        const summary = document.getElementById('analysisSummary');
+        if (!sel || !container) return;
+        const meetingId = sel.value;
+        const meeting = appState.meetings.find(m => m.id === meetingId);
+        document.getElementById('analysisMeetingName').textContent = meeting ? meeting.name : '-';
+
+        const races = appState.races.filter(r => r.meetingId === meetingId).sort((a, b) => a.raceNumber - b.raceNumber);
+        if (races.length === 0) {
+            summary.innerHTML = '';
+            container.innerHTML = `<div class="lg:col-span-2 p-6 text-center text-slate-500 font-bold bg-slate-900 border border-slate-800 rounded-2xl">No races available for analysis.</div>`;
+            return;
+        }
+
+        const rows = races.map(race => {
+            const ranked = calculateRunnerProbabilities(race.runners || []).sort((a, b) => b.probPct - a.probPct);
+            return { race, ranked, best: ranked[0], danger: ranked[1], third: ranked[2] };
+        });
+
+        const gapLabel = gap => gap >= 10 ? ['Clear favourite', 'text-emerald-400 border-emerald-800 bg-emerald-950'] :
+                                gap >= 5  ? ['Good chance', 'text-amber-400 border-amber-800 bg-amber-950'] :
+                                            ['Open race', 'text-rose-400 border-rose-800 bg-rose-950'];
+
+        // Summary table
+        summary.innerHTML = `
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-slate-950 text-xs uppercase text-slate-400">
+                            <tr><th class="p-3">Race</th><th class="p-3">Best chance</th><th class="p-3">Main danger</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800">
+                            ${rows.map(r => `
+                                <tr>
+                                    <td class="p-3 font-bold text-amber-400 whitespace-nowrap">Race ${r.race.raceNumber}</td>
+                                    <td class="p-3 text-slate-100">${r.best ? `<span class="font-bold">${r.best.no}. ${r.best.horse}</span> <span class="text-emerald-400 font-mono text-xs">${r.best.probPct}%</span>` : '-'}</td>
+                                    <td class="p-3 text-slate-300">${r.danger ? `${r.danger.no}. ${r.danger.horse} <span class="text-rose-400 font-mono text-xs">${r.danger.probPct}%</span>` : '-'}</td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>`;
+
+        // Detailed cards
+        container.innerHTML = rows.map(({ race, best, danger, third }) => {
+            if (!best) return '';
+            const gap = danger ? +(best.probPct - danger.probPct).toFixed(1) : best.probPct;
+            const [lbl, cls] = gapLabel(gap);
+            const winners = race.winners || [];
+            const settled = race.status === 'FINISHED';
+            const mark = h => settled && winners.includes(h.no)
+                ? `<span class="ml-2 bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] px-2 py-0.5 rounded font-bold">WON</span>` : '';
+            const runnerBox = (h, title, color, icon) => h ? `
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-1.5">
+                    <div class="text-[10px] uppercase tracking-wider font-black ${color} flex items-center gap-1.5"><i class="fa-solid ${icon}"></i> ${title}</div>
+                    <div class="text-white font-bold text-base">${h.no}. ${h.horse}${mark(h)}</div>
+                    <div class="text-xs text-slate-400">Jockey: <span class="text-slate-200">${h.jockey || '-'}</span> | Stable: <span class="text-slate-200">${h.trainer || '-'}</span></div>
+                    <div class="text-xs text-slate-400">Draw ${h.draw ?? '-'} | ${h.weight ?? '-'}kg ${h.allowance ? `(${h.allowance})` : ''} | Rating ${h.rating ?? '-'}</div>
+                    <div class="flex items-center gap-2 pt-1">
+                        <div class="flex-1 bg-slate-800 h-2 rounded-full"><div class="h-2 rounded-full ${color.includes('emerald') ? 'bg-emerald-400' : 'bg-rose-400'}" style="width:${Math.min(100, h.probPct)}%"></div></div>
+                        <span class="text-xs font-bold font-mono ${color}">${h.probPct}%</span>
+                    </div>
+                </div>` : '';
+            return `
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="bg-amber-500 text-slate-950 font-black text-xs px-2.5 py-1 rounded-lg">RACE ${race.raceNumber}</span>
+                            <span class="text-xs text-slate-300 font-semibold">${race.distance || ''} ${race.raceClass ? '• ' + race.raceClass : ''}</span>
+                        </div>
+                        <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded border ${cls}">${lbl}${danger ? ` (+${gap} pts)` : ''}</span>
+                    </div>
+                    ${runnerBox(best, 'Best chance', 'text-emerald-400', 'fa-trophy')}
+                    ${runnerBox(danger, 'Main danger', 'text-rose-400', 'fa-triangle-exclamation')}
+                    ${third ? `<div class="text-xs text-slate-500">Next in line: <span class="text-slate-300">${third.no}. ${third.horse}</span> <span class="font-mono">${third.probPct}%</span></div>` : ''}
+                </div>`;
+        }).join('');
+    }
+
+    // ===== ODDS EVOLUTION (external pages, logo stripped) =====
+    const ODDS_EVO = {
+        base: 'https://zotturf.github.io/evolution-odds/',
+        files: [
+            ['Meeting2026OddsEvolution.html', 'Meeting odds evolution'],
+            ['Meeting2026OddsEvolution_Sunday.html', 'Sunday meeting'],
+            ['Meeting2026OddsEvolution_MaidenCup.html', 'Maiden Cup'],
+            ['odds_evolution_zot_turf_NewFormat.html', 'New format']
+        ]
+    };
+    let oddsEvoLoadedOnce = false;
+
+    function initOddsEvolutionSelect() {
+        const sel = document.getElementById('oddsEvoFile');
+        if (sel && !sel.options.length) {
+            sel.innerHTML = ODDS_EVO.files.map(f => `<option value="${f[0]}">${f[1]}</option>`).join('');
+        }
+    }
+
+    async function loadOddsEvolution() {
+        initOddsEvolutionSelect();
+        const file = document.getElementById('oddsEvoFile').value;
+        const url = ODDS_EVO.base + file;
+        const frame = document.getElementById('oddsEvoFrame');
+        const status = document.getElementById('oddsEvoStatus');
+        document.getElementById('oddsEvoOpen').href = url;
+        status.textContent = 'Loading...';
+        oddsEvoLoadedOnce = true;
+        try {
+            const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            let html = await res.text();
+            // remove logo / header images and keep relative assets (horse silks) working
+            html = html.replace(/<img[^>]*(zot_logo|header\.png)[^>]*>/gi, '');
+            const hideLogo = '<base href="' + ODDS_EVO.base + '"><style>img[src*="zot_logo"],img[src*="header"]{display:none!important}</style>';
+            html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + hideLogo) : hideLogo + html;
+            frame.removeAttribute('src');
+            frame.srcdoc = html;
+            status.textContent = '';
+        } catch (err) {
+            console.error('Odds evolution load failed:', err);
+            frame.removeAttribute('srcdoc');
+            frame.src = url;
+            status.textContent = 'Could not load the page in clean mode, showing the original page instead (logo may be visible).';
+        }
+    }
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab-btn').forEach(el => {
+            el.classList.remove('border-amber-500', 'text-amber-400');
+            el.classList.add('border-transparent', 'text-slate-400');
+        });
+
+        document.getElementById(`view-${tabId}`).classList.remove('hidden');
+        const activeBtn = document.getElementById(`tabBtn-${tabId}`);
+        if (activeBtn) {
+            activeBtn.classList.add('border-amber-500', 'text-amber-400');
+            activeBtn.classList.remove('border-transparent', 'text-slate-400');
+        }
+
+        if (tabId === 'stables') {
+            renderStablesAndJockeys();
+        } else if (tabId === 'analysis') {
+            renderRaceAnalysis();
+        } else if (tabId === 'oddsevo') {
+            if (!oddsEvoLoadedOnce) loadOddsEvolution();
+        } else if (tabId === 'admin') {
+            renderAdminSettleList();
+            renderAdminAccordion();
+            renderAdminUsersTables();
+            updateDeleteMeetingPreview();
+        }
+    }
+
+    function switchAdminTab(subTab) {
+        document.querySelectorAll('.subtab-btn').forEach(b => {
+            b.classList.remove('border-rose-500', 'text-rose-400');
+            b.classList.add('border-transparent', 'text-slate-400');
+        });
+        document.getElementById(`adminSubTab-${subTab}`).classList.add('border-rose-500', 'text-rose-400');
+        document.getElementById(`adminSubTab-${subTab}`).classList.remove('border-transparent', 'text-slate-400');
+
+        document.getElementById('adminSub-importer').classList.toggle('hidden', subTab !== 'importer');
+        document.getElementById('adminSub-editor').classList.toggle('hidden', subTab !== 'editor');
+        document.getElementById('adminSub-users').classList.toggle('hidden', subTab !== 'users');
+        document.getElementById('adminSub-database').classList.toggle('hidden', subTab !== 'database');
+        if (subTab === 'database') renderDbStatus();
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        
+        const bgColors = {
+            success: 'bg-emerald-900/95 border-emerald-500 text-emerald-100',
+            error: 'bg-rose-900/95 border-rose-500 text-rose-100',
+            warning: 'bg-amber-900/95 border-amber-500 text-amber-100',
+            info: 'bg-slate-900/95 border-slate-600 text-slate-100'
+        };
+
+        toast.className = `p-3 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur transition-all duration-300 transform translate-y-2 ${bgColors[type] || bgColors.info}`;
+        toast.innerText = message;
+
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'translate-y-[-10px]');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // Supabase connection is configured from the app itself now: Admin Workspace ->
+    // "Database & Shared Accounts" tab. See that tab for the setup SQL and status.
+</script>
+</body>
+</html>
